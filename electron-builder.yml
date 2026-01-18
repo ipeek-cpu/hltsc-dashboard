@@ -1,0 +1,82 @@
+appId: com.beads.dashboard
+productName: Beads Dashboard
+copyright: Copyright (c) 2024 Beads
+
+directories:
+  output: release
+  buildResources: build-resources
+
+files:
+  - build/**/*
+  - electron/**/*.js
+  - package.json
+
+extraResources:
+  # SvelteKit server build
+  - from: build
+    to: server
+    filter:
+      - "**/*"
+  # Native modules for the bundled Node.js (not Electron's Node.js)
+  # Must be in server/node_modules for SvelteKit's module resolution
+  - from: node_modules/better-sqlite3
+    to: server/node_modules/better-sqlite3
+    filter:
+      - "**/*"
+      - "!src/**"
+      - "!deps/**"
+      - "!build/node_gyp_bins/**"
+  - from: node_modules/bindings
+    to: server/node_modules/bindings
+  - from: node_modules/file-uri-to-path
+    to: server/node_modules/file-uri-to-path
+  - from: node_modules/node-pty
+    to: server/node_modules/node-pty
+    filter:
+      - "**/*"
+      - "!src/**"
+      - "!deps/**"
+      - "!build/node_gyp_bins/**"
+
+# Don't rebuild native modules - we use the ones compiled for the bundled Node.js
+npmRebuild: false
+
+# Architecture-specific resources handled per-platform below
+
+mac:
+  category: public.app-category.developer-tools
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build-resources/entitlements.mac.plist
+  entitlementsInherit: build-resources/entitlements.mac.plist
+  icon: src-tauri/icons/icon.icns
+  target:
+    - dmg
+    - zip
+  artifactName: "${productName}-${version}-${arch}.${ext}"
+
+afterPack: scripts/after-pack.cjs
+
+dmg:
+  background: src-tauri/dmg/background.png
+  iconSize: 100
+  iconTextSize: 12
+  window:
+    width: 660
+    height: 400
+  contents:
+    - x: 180
+      y: 170
+      type: file
+    - x: 480
+      y: 170
+      type: link
+      path: /Applications
+
+# Auto-update configuration
+publish:
+  provider: generic
+  url: https://pub-d15dba8b41ac4f10bd183bdaac2ee2ed.r2.dev/electron
+
+# Code signing (credentials from environment)
+afterSign: scripts/notarize.cjs

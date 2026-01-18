@@ -1,0 +1,109 @@
+import { json } from '@sveltejs/kit';
+import { getProjectById } from '$lib/dashboard-db';
+import {
+	getIssueWithDetails,
+	getIssueById,
+	updateIssue,
+	getAllDescendantIssues,
+	deleteIssueWithDescendants
+} from '$lib/project-db';
+import type { RequestHandler } from './$types';
+
+export const GET: RequestHandler = async ({ params }) => {
+	const project = getProjectById(params.id);
+
+	if (!project) {
+		return json({ error: 'Project not found' }, { status: 404 });
+	}
+
+	try {
+		const issue = getIssueWithDetails(project.path, params.issueId);
+
+		if (!issue) {
+			return json({ error: 'Issue not found' }, { status: 404 });
+		}
+
+		return json(issue);
+	} catch (e) {
+		console.error('Error fetching issue details:', e);
+		return json({ error: 'Failed to fetch issue details' }, { status: 500 });
+	}
+};
+
+// Update issue title and/or description
+export const PATCH: RequestHandler = async ({ params, request }) => {
+	const project = getProjectById(params.id);
+
+	if (!project) {
+		return json({ error: 'Project not found' }, { status: 404 });
+	}
+
+	try {
+		const body = await request.json();
+		const { title, description } = body;
+
+		// Validate at least one field is provided
+		if (title === undefined && description === undefined) {
+			return json({ error: 'No fields to update' }, { status: 400 });
+		}
+
+		// Check issue exists
+		const issue = getIssueById(project.path, params.issueId);
+		if (!issue) {
+			return json({ error: 'Issue not found' }, { status: 404 });
+		}
+
+		const success = updateIssue(project.path, params.issueId, { title, description });
+
+		if (!success) {
+			return json({ error: 'Failed to update issue' }, { status: 500 });
+		}
+
+		// Return updated issue
+		const updatedIssue = getIssueWithDetails(project.path, params.issueId);
+		return json(updatedIssue);
+	} catch (e) {
+		console.error('Error updating issue:', e);
+		return json({ error: 'Failed to update issue' }, { status: 500 });
+	}
+};
+
+// Delete issue and all descendants
+export const DELETE: RequestHandler = async ({ params, url }) => {
+	const project = getProjectById(params.id);
+
+	if (!project) {
+		return json({ error: 'Project not found' }, { status: 404 });
+	}
+
+	try {
+		// Check issue exists
+		const issue = getIssueById(project.path, params.issueId);
+		if (!issue) {
+			return json({ error: 'Issue not found' }, { status: 404 });
+		}
+
+		// If preview=true, just return what would be deleted
+		const preview = url.searchParams.get('preview') === 'true';
+		if (preview) {
+			const descendants = getAllDescendantIssues(project.path, params.issueId);
+			return json({
+				issue,
+				descendants,
+				totalCount: 1 + descendants.length
+			});
+		}
+
+		// Actually delete
+		const result = deleteIssueWithDescendants(project.path, params.issueId);
+
+		return json({
+			success: true,
+			deleted: result.deleted,
+			count: result.deleted.length
+		});
+	} catch (e) {
+		console.error('Error deleting issue:', e);
+		return json({ error: 'Failed to delete issue' }, { status: 500 });
+	}
+};

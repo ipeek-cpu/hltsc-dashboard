@@ -1,0 +1,19 @@
+.svelte-kit
+node_modules
+build
+.DS_Store
+
+# Tauri
+src-tauri/target/
+src-tauri/bin/
+src-tauri/gen/
+
+# Release artifacts
+.tauri-keys/
+production_release/.r2-credentials
+.wrangler/
+
+.r2-credentials
+production_release
+.apple-credentials
+release/
