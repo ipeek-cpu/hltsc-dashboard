@@ -1788,6 +1788,8 @@
 		flex: 1;
 		display: flex;
 		overflow: hidden;
+		min-height: 0;
+		height: 0; /* Allow flex: 1 to determine actual height */
 	}
 
 	.main-layout.resizing {
@@ -1850,7 +1852,8 @@
 		border-left: 1px solid #e5e7eb;
 		min-width: 300px;
 		max-width: 80vw;
-		height: 100%;
+		align-self: stretch;
+		flex-shrink: 0;
 		overflow: hidden;
 	}
 
@@ -1858,7 +1861,6 @@
 		flex: 1;
 		display: flex;
 		flex-direction: row;
-		height: 100%;
 		min-height: 0;
 		overflow: hidden;
 	}
@@ -1867,7 +1869,6 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		height: 100%;
 		min-height: 0;
 		overflow: hidden;
 		border-right: 1px solid #e5e7eb;
