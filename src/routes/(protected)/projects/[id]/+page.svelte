@@ -1848,16 +1848,18 @@
 		flex-direction: column;
 		background: #ffffff;
 		border-left: 1px solid #e5e7eb;
-		overflow: hidden;
 		min-width: 300px;
 		max-width: 80vw;
 		height: 100%;
+		overflow: hidden;
 	}
 
 	.chat-panels {
 		flex: 1;
 		display: flex;
 		flex-direction: row;
+		height: 100%;
+		min-height: 0;
 		overflow: hidden;
 	}
 
@@ -1865,6 +1867,8 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
+		height: 100%;
+		min-height: 0;
 		overflow: hidden;
 		border-right: 1px solid #e5e7eb;
 		min-width: 0;
@@ -1921,6 +1925,7 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
+		min-height: 0;
 	}
 
 	.chat-panel :global(.chat-sheet) {
@@ -1928,6 +1933,16 @@
 		display: flex;
 		flex-direction: column;
 		width: 100% !important;
+		min-height: 0;
+	}
+
+	.chat-panel :global(.messages-wrapper) {
+		flex: 1;
+		min-height: 0;
+	}
+
+	.chat-panel :global(.chat-input-container) {
+		flex-shrink: 0;
 	}
 
 	.add-chat-btn {
@@ -1945,6 +1960,7 @@
 		cursor: pointer;
 		transition: all 0.15s ease;
 		font-family: 'Figtree', sans-serif;
+		flex-shrink: 0;
 	}
 
 	.add-chat-btn:hover {
