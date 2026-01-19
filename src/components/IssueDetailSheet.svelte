@@ -8,6 +8,9 @@
   import ConfirmDeleteModal from './ConfirmDeleteModal.svelte';
   import ClaimBeadModal from './ClaimBeadModal.svelte';
   import CompleteBeadModal from './CompleteBeadModal.svelte';
+  import StatusDropdown from './StatusDropdown.svelte';
+  import { toasts } from '$lib/stores/toast-store';
+  import type { BeadStatus } from '$lib/bead-lifecycle';
 
   let { issue, isOpen, onclose, onissueclick, onback, canGoBack = false, onupdate, ondelete, projectId, agents = [], onstarttask, onchattask, onstoptask, activeRunId = null }: {
     issue: IssueWithDetails | null;
@@ -266,6 +269,42 @@
     updateAssignee(value);
   }
 
+  // Handle status change from dropdown
+  async function handleStatusChange(newStatus: BeadStatus, requiresModal: boolean) {
+    if (!issue || !projectId) return;
+
+    // If transition requires modal, open the appropriate one
+    if (requiresModal) {
+      if (newStatus === 'in_progress') {
+        showClaimModal = true;
+      } else if (newStatus === 'in_review') {
+        showCompleteModal = true;
+      }
+      return;
+    }
+
+    // Direct status change (no modal required)
+    try {
+      const response = await fetch(`/api/projects/${projectId}/issues/${issue.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+
+      if (response.ok) {
+        const updatedIssue = await response.json();
+        onupdate?.(updatedIssue);
+        toasts.success(`Status changed to ${newStatus.replace('_', ' ')}`);
+      } else {
+        const error = await response.json();
+        toasts.error(error.error || 'Failed to change status');
+      }
+    } catch (err) {
+      console.error('Error changing status:', err);
+      toasts.error('Failed to change status');
+    }
+  }
+
   // Track visibility separately to allow close animation
   let visible = $state(false);
   let animating = $state(false);
@@ -430,12 +469,11 @@
           <div class="metadata-section">
             <div class="metadata-row">
               <span class="metadata-label">Status</span>
-              <span
-                class="status-badge"
-                style="color: {statusLabels[issue.status]?.color || '#6b7280'}; background: {statusLabels[issue.status]?.bg || '#f3f4f6'}"
-              >
-                {statusLabels[issue.status]?.label || issue.status}
-              </span>
+              <StatusDropdown
+                status={issue.status as BeadStatus}
+                onchange={handleStatusChange}
+                disabled={isEditing}
+              />
             </div>
             <div class="metadata-row">
               <span class="metadata-label">Type</span>
