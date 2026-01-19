@@ -55,10 +55,10 @@
 {/if}
 -->
 
-<ErrorBoundary>
-	{#snippet children()}
-		{@render children()}
-	{/snippet}
-</ErrorBoundary>
+{#snippet errorBoundaryContent()}
+	{@render children()}
+{/snippet}
+
+<ErrorBoundary children={errorBoundaryContent} />
 
 <Toast />

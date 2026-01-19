@@ -23,13 +23,16 @@
     currentStatus: string;
   }
 
-  let { issue, isNew = false, acceptAgentDrop = false, draggable = true, onclick, onagentdrop }: {
+  let { issue, isNew = false, acceptAgentDrop = false, draggable = true, selectable = false, selected = false, onclick, onagentdrop, onselect }: {
     issue: Issue;
     isNew?: boolean;
     acceptAgentDrop?: boolean;
     draggable?: boolean;
+    selectable?: boolean;
+    selected?: boolean;
     onclick?: (issueId: string) => void;
     onagentdrop?: (issueId: string, agentData: AgentDropData) => void;
+    onselect?: (issueId: string, selected: boolean) => void;
   } = $props();
 
   let isDragOver = $state(false);
@@ -103,8 +106,21 @@
     }
   }
 
-  function handleClick() {
+  function handleClick(event: MouseEvent) {
+    // If in selection mode, toggle selection instead of opening detail
+    if (selectable) {
+      event.preventDefault();
+      event.stopPropagation();
+      onselect?.(issue.id, !selected);
+      return;
+    }
     onclick?.(issue.id);
+  }
+
+  function handleCheckboxClick(event: MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    onselect?.(issue.id, !selected);
   }
 
   function handlePRClick(event: MouseEvent) {
@@ -179,7 +195,9 @@
   class:is-drop-target={acceptAgentDrop}
   class:is-drag-over={isDragOver}
   class:is-dragging={isDragging}
-  draggable={draggable}
+  class:is-selectable={selectable}
+  class:is-selected={selected}
+  draggable={draggable && !selectable}
   onclick={handleClick}
   ondragstart={handleDragStart}
   ondragend={handleDragEnd}
@@ -188,9 +206,21 @@
   ondrop={handleDrop}
   role="button"
   tabindex="0"
-  onkeydown={(e) => e.key === 'Enter' && handleClick()}
+  onkeydown={(e) => e.key === 'Enter' && handleClick(e as unknown as MouseEvent)}
 >
   <div class="card-header">
+    {#if selectable}
+      <button
+        class="select-checkbox"
+        class:checked={selected}
+        onclick={handleCheckboxClick}
+        aria-label={selected ? 'Deselect issue' : 'Select issue'}
+      >
+        {#if selected}
+          <Icon name="check" size={12} />
+        {/if}
+      </button>
+    {/if}
     <span class="type-icon">
       <Icon name={typeIcons[issue.issue_type] || 'file-text'} size={14} />
     </span>
@@ -271,19 +301,18 @@
   .issue-card {
     position: relative;
     background: #ffffff;
-    border-radius: 12px;
-    padding: 14px;
-    margin-bottom: 10px;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
     border: 1px solid #f0f0f0;
-    transition: all 0.2s ease;
+    transition: all 0.15s ease;
     cursor: pointer;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
   }
 
   .issue-card:hover {
     border-color: #e0e0e0;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   }
 
   .issue-card.is-new {
@@ -304,8 +333,8 @@
   .card-header {
     display: flex;
     align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
+    gap: 6px;
+    margin-bottom: 6px;
   }
 
   .type-icon {
@@ -316,8 +345,8 @@
 
   .issue-id {
     font-family: monospace;
-    font-size: 11px;
-    color: #888888;
+    font-size: 10px;
+    color: #9ca3af;
     flex: 1;
   }
 
@@ -333,10 +362,10 @@
   }
 
   .issue-title {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 500;
     color: #1a1a1a;
-    margin: 0 0 8px 0;
+    margin: 0 0 4px 0;
     line-height: 1.4;
   }
 
@@ -509,5 +538,47 @@
 
   .issue-card[draggable="true"]:active {
     cursor: grabbing;
+  }
+
+  /* Selection mode styles */
+  .issue-card.is-selectable {
+    cursor: pointer;
+  }
+
+  .issue-card.is-selected {
+    border-color: #3b82f6;
+    background: #eff6ff;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  }
+
+  .issue-card.is-selected:hover {
+    border-color: #2563eb;
+    background: #dbeafe;
+  }
+
+  .select-checkbox {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: 2px solid #d1d5db;
+    border-radius: 4px;
+    background: #ffffff;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    padding: 0;
+    flex-shrink: 0;
+  }
+
+  .select-checkbox:hover {
+    border-color: #3b82f6;
+    background: #eff6ff;
+  }
+
+  .select-checkbox.checked {
+    border-color: #3b82f6;
+    background: #3b82f6;
+    color: #ffffff;
   }
 </style>

@@ -95,9 +95,11 @@ export interface Agent {
   scope: 'global' | 'project'; // Whether agent is from global or project agents dir
 }
 
-export type BoardFilter =
-  | { type: 'all' }
-  | { type: 'agent'; name: string };
+export interface BoardFilter {
+  search?: string;
+  agentName?: string;
+  epicId?: string;
+}
 
 // MCP Server Configuration Types
 export interface McpServerConfig {

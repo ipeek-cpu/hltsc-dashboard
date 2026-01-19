@@ -9,13 +9,16 @@
     toStatus: string;
   }
 
-  let { title, status, issues, recentlyChanged = new Set(), onissueclick, ondrop }: {
+  let { title, status, issues, recentlyChanged = new Set(), selectionMode = false, selectedIds = new Set(), onissueclick, ondrop, onselect }: {
     title: string;
     status: string;
     issues: Issue[];
     recentlyChanged?: Set<string>;
+    selectionMode?: boolean;
+    selectedIds?: Set<string>;
     onissueclick?: (issueId: string) => void;
     ondrop?: (data: ColumnDropData) => void;
+    onselect?: (issueId: string, selected: boolean) => void;
   } = $props();
 
   let isDragOver = $state(false);
@@ -152,7 +155,14 @@
 
   <div class="column-content" style="background: {bgColor}">
     {#each filteredIssues as issue (issue.id)}
-      <IssueCard {issue} isNew={recentlyChanged.has(issue.id)} onclick={onissueclick} />
+      <IssueCard
+        {issue}
+        isNew={recentlyChanged.has(issue.id)}
+        selectable={selectionMode}
+        selected={selectedIds.has(issue.id)}
+        onclick={onissueclick}
+        onselect={onselect}
+      />
     {/each}
 
     {#if filteredIssues.length === 0}
@@ -170,16 +180,16 @@
 <style>
   .kanban-column {
     flex: 1;
-    min-width: 280px;
-    max-width: 350px;
+    min-width: 260px;
+    max-width: 320px;
     display: flex;
     flex-direction: column;
     background: #ffffff;
-    border-radius: 16px;
+    border-radius: 12px;
     overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.02);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
     transition: all 0.2s ease;
-    border: 2px solid transparent;
+    border: 1px solid #f0f0f0;
   }
 
   .kanban-column.is-drag-over {
@@ -205,17 +215,18 @@
   }
 
   .column-header {
-    padding: 18px 16px;
+    padding: 10px 12px;
     border-bottom: 2px solid;
     display: flex;
     align-items: center;
     justify-content: space-between;
     background: #ffffff;
+    flex-shrink: 0;
   }
 
   .column-header h2 {
     margin: 0;
-    font-size: 13px;
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -225,17 +236,16 @@
   .count {
     background: #f5f5f5;
     color: #666666;
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 12px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
     font-weight: 500;
   }
 
   .column-content {
     flex: 1;
-    padding: 12px;
+    padding: 8px;
     overflow-y: auto;
-    max-height: calc(100vh - 200px);
     transition: background 0.2s ease;
   }
 

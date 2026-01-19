@@ -30,6 +30,9 @@
 	import PlanningView from '../../../../components/PlanningView.svelte';
 	import ExecutionView from '../../../../components/ExecutionView.svelte';
 	import StaleBeadsPanel from '../../../../components/StaleBeadsPanel.svelte';
+	import BulkActionsBar from '../../../../components/BulkActionsBar.svelte';
+	import ColumnVisibilityDropdown from '../../../../components/ColumnVisibilityDropdown.svelte';
+	import BoardFilterToolbar from '../../../../components/BoardFilterToolbar.svelte';
 	import type { ListFilters } from '../../../../components/BeadsListFilters.svelte';
 
 	let project: ProjectInfo | null = $state(null);
@@ -87,11 +90,18 @@
 	let hasDevConfig = $state(false);
 
 	// Board filter state
-	let boardFilter: BoardFilter = $state({ type: 'all' });
+	let boardFilter: BoardFilter = $state({});
 
 	// List view state
 	let showListView = $state(false);
 	let listViewFilters = $state<Partial<ListFilters> | null>(null);
+
+	// Bulk selection state
+	let selectionMode = $state(false);
+	let selectedIssueIds = $state<Set<string>>(new Set());
+
+	// Column visibility state
+	let hiddenColumns = $state<Set<string>>(new Set());
 
 	// Git status for unsaved changes banner
 	let hasUnsavedChanges = $state(false);
@@ -790,12 +800,138 @@
 
 	// Filtered issues for board
 	let filteredIssues = $derived.by(() => {
-		if (boardFilter.type === 'all') {
-			return issues;
+		let result = issues;
+
+		// Filter by search
+		if (boardFilter.search) {
+			const search = boardFilter.search.toLowerCase();
+			result = result.filter(i =>
+				i.title.toLowerCase().includes(search) ||
+				i.description?.toLowerCase().includes(search) ||
+				i.id.toLowerCase().includes(search)
+			);
 		}
-		const agentName = boardFilter.name;
-		return issues.filter(i => i.assignee === agentName);
+
+		// Filter by agent
+		if (boardFilter.agentName) {
+			result = result.filter(i => i.assignee === boardFilter.agentName);
+		}
+
+		// Filter by epic (show epic and its children)
+		if (boardFilter.epicId) {
+			// Get the epic and all issues that depend on it (children)
+			const epicId = boardFilter.epicId;
+			result = result.filter(i => {
+				// Include the epic itself
+				if (i.id === epicId) return true;
+				// For now, we'll need to check dependencies - this is a simplified version
+				// In practice, we'd need to fetch dependency data
+				// For now, just show all non-epic issues when an epic is selected
+				return i.issue_type !== 'epic';
+			});
+		}
+
+		return result;
 	});
+
+	// Get selected issues as array for BulkActionsBar
+	let selectedIssues = $derived(issues.filter(i => selectedIssueIds.has(i.id)));
+
+	// Selection mode handlers
+	function toggleSelectionMode() {
+		selectionMode = !selectionMode;
+		if (!selectionMode) {
+			selectedIssueIds = new Set();
+		}
+	}
+
+	function handleIssueSelect(issueId: string, selected: boolean) {
+		const newSet = new Set(selectedIssueIds);
+		if (selected) {
+			newSet.add(issueId);
+		} else {
+			newSet.delete(issueId);
+		}
+		selectedIssueIds = newSet;
+	}
+
+	function clearSelection() {
+		selectedIssueIds = new Set();
+		selectionMode = false;
+	}
+
+	// Bulk status change handler
+	async function handleBulkStatusChange(issueIds: string[], newStatus: string) {
+		const projectId = $page.params.id;
+		let successCount = 0;
+		let failCount = 0;
+
+		for (const issueId of issueIds) {
+			try {
+				const response = await fetch(`/api/projects/${projectId}/issues/${issueId}`, {
+					method: 'PATCH',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ status: newStatus })
+				});
+
+				if (response.ok) {
+					successCount++;
+				} else {
+					failCount++;
+				}
+			} catch (err) {
+				console.error(`Error updating issue ${issueId}:`, err);
+				failCount++;
+			}
+		}
+
+		// Show result toast
+		if (failCount === 0) {
+			toasts.success(`Moved ${successCount} issue${successCount !== 1 ? 's' : ''} to ${newStatus.replace('_', ' ')}`);
+		} else if (successCount === 0) {
+			toasts.error(`Failed to update ${failCount} issue${failCount !== 1 ? 's' : ''}`);
+		} else {
+			toasts.success(`Moved ${successCount} issue${successCount !== 1 ? 's' : ''}, ${failCount} failed`);
+		}
+
+		// Clear selection after bulk action
+		clearSelection();
+	}
+
+	// Column visibility handlers
+	function handleColumnVisibilityChange(newHiddenColumns: Set<string>) {
+		hiddenColumns = newHiddenColumns;
+		// Persist to localStorage
+		if (browser) {
+			const projectId = $page.params.id;
+			const key = `beads-hidden-columns-${projectId}`;
+			if (newHiddenColumns.size > 0) {
+				localStorage.setItem(key, JSON.stringify([...newHiddenColumns]));
+			} else {
+				localStorage.removeItem(key);
+			}
+		}
+	}
+
+	// Load column visibility from localStorage on mount
+	$effect(() => {
+		if (browser) {
+			const projectId = $page.params.id;
+			const key = `beads-hidden-columns-${projectId}`;
+			const stored = localStorage.getItem(key);
+			if (stored) {
+				try {
+					const parsed = JSON.parse(stored);
+					hiddenColumns = new Set(parsed);
+				} catch (e) {
+					console.error('Failed to parse hidden columns:', e);
+				}
+			}
+		}
+	});
+
+	// Filter columns based on visibility
+	let visibleColumns = $derived(columns.filter(c => !hiddenColumns.has(c.status)));
 </script>
 
 <svelte:head>
@@ -805,75 +941,74 @@
 <div class="dashboard">
 	<header>
 		<div class="header-left">
-			<a href="/" class="back-link">← Projects</a>
+			<a href="/" class="back-link" title="Back to Projects">
+				<Icon name="chevron-left" size={16} />
+			</a>
 			<h1>{project?.name || 'Loading...'}</h1>
 			<div class="connection-status" class:connected>
 				<span class="status-dot"></span>
-				{connected ? 'Live' : 'Connecting...'}
+			</div>
+			{#if hasUnsavedChanges && activeTab !== 'history'}
+				<button class="unsaved-pill" onclick={() => handleTabChange('history')} title="View unsaved changes">
+					<Icon name="git-commit" size={12} />
+					<span>{unsavedChangeCount}</span>
+				</button>
+			{/if}
+		</div>
+
+		<nav class="header-nav">
+			<TabSwitcher {activeTab} ontabchange={handleTabChange} compact={true} />
+		</nav>
+
+		<div class="header-right">
+			<div class="header-stats">
+				<button class="stat-pill" onclick={() => handleStatClick('open')} title="Open issues">
+					<span class="stat-value">{openCount}</span>
+					<span class="stat-label">open</span>
+				</button>
+				<button class="stat-pill" onclick={() => handleStatClick('in_progress')} title="In progress">
+					<span class="stat-value">{inProgressCount}</span>
+					<span class="stat-label">active</span>
+				</button>
+				<button class="stat-pill in-review" onclick={() => handleStatClick('in_review')} title="In review">
+					<span class="stat-value">{inReviewCount}</span>
+					<span class="stat-label">review</span>
+				</button>
+				<button class="stat-pill total" onclick={() => openListView()} title="View all issues">
+					<span class="stat-value">{issues.length}</span>
+				</button>
+			</div>
+			<div class="header-actions">
+				{#if hasDevConfig}
+					{#if devServerStatus === 'running'}
+						<button class="action-btn server running" onclick={handleStopDevServer} title="Stop dev server">
+							<Icon name="square" size={14} />
+							{#if devServerPort}
+								<span class="port-badge">:{devServerPort}</span>
+							{/if}
+						</button>
+					{:else if devServerStatus === 'starting'}
+						<button class="action-btn server starting" disabled title="Starting...">
+							<Icon name="loader" size={14} />
+						</button>
+					{:else}
+						<button class="action-btn server" onclick={handleStartDevServer} title="Start dev server">
+							<Icon name="play" size={14} />
+						</button>
+					{/if}
+				{/if}
+				<button class="action-btn live-edit" onclick={handleLiveEditOpen} title="Live edit with Claude">
+					<Icon name="zap" size={16} />
+				</button>
+				<button class="action-btn plan" onclick={handlePlannerChat} title="Plan features" disabled={plannerLoading}>
+					<Icon name="clipboard" size={16} />
+				</button>
+				<button class="action-btn chat" onclick={handleGeneralChat} title="Chat with Claude">
+					<Icon name="message-circle" size={16} />
+				</button>
 			</div>
 		</div>
-		<div class="header-actions">
-			{#if hasDevConfig}
-				{#if devServerStatus === 'running'}
-					<button class="server-btn running" onclick={handleStopDevServer} title="Stop dev server">
-						<Icon name="square" size={16} />
-						<span>Stop Server</span>
-						{#if devServerPort}
-							<span class="port-badge">:{devServerPort}</span>
-						{/if}
-					</button>
-				{:else if devServerStatus === 'starting'}
-					<button class="server-btn starting" disabled>
-						<Icon name="loader" size={16} />
-						<span>Starting...</span>
-					</button>
-				{:else}
-					<button class="server-btn" onclick={handleStartDevServer} title="Start dev server">
-						<Icon name="play" size={16} />
-						<span>Start Server</span>
-					</button>
-				{/if}
-			{/if}
-			<button class="live-edit-btn" onclick={handleLiveEditOpen} title="Live edit with Claude">
-				<Icon name="zap" size={20} />
-				<span>Live Edit</span>
-			</button>
-			<button class="plan-btn" onclick={handlePlannerChat} title="Plan features and create issues" disabled={plannerLoading}>
-				<Icon name="clipboard" size={20} />
-				<span>{plannerLoading ? 'Loading...' : 'Plan'}</span>
-			</button>
-			<button class="chat-btn" onclick={handleGeneralChat} title="Chat with Claude">
-				<Icon name="message-circle" size={20} />
-				<span>Chat</span>
-			</button>
-		</div>
-		<div class="header-stats">
-			<button class="stat stat-clickable" onclick={() => handleStatClick('open')}>
-				<span class="stat-value">{openCount}</span>
-				<span class="stat-label">Open</span>
-			</button>
-			<button class="stat stat-clickable" onclick={() => handleStatClick('in_progress')}>
-				<span class="stat-value">{inProgressCount}</span>
-				<span class="stat-label">In Progress</span>
-			</button>
-			<button class="stat stat-clickable" onclick={() => handleStatClick('in_review')}>
-				<span class="stat-value in-review">{inReviewCount}</span>
-				<span class="stat-label">In Review</span>
-			</button>
-			<button class="stat stat-clickable" onclick={() => openListView()}>
-				<span class="stat-value">{issues.length}</span>
-				<span class="stat-label">Total</span>
-			</button>
-		</div>
 	</header>
-
-	{#if hasUnsavedChanges && activeTab !== 'history'}
-		<button class="unsaved-banner" onclick={() => handleTabChange('history')}>
-			<Icon name="alert-circle" size={16} />
-			<span>{unsavedChangeCount} unsaved change{unsavedChangeCount !== 1 ? 's' : ''}</span>
-			<span class="banner-action">View in History →</span>
-		</button>
-	{/if}
 
 	{#if loadError}
 		<div class="error-banner">
@@ -881,29 +1016,50 @@
 			<a href="/" class="error-link">← Back to Projects</a>
 		</div>
 	{:else}
-		<div class="tab-row">
-			<TabSwitcher {activeTab} ontabchange={handleTabChange} />
-			{#if activeTab === 'board' && agents.length > 0}
-				<BoardFilterComponent
-					{agents}
-					value={boardFilter}
-					onchange={handleBoardFilterChange}
-				/>
-			{/if}
-		</div>
+		{#if activeTab === 'board'}
+			<div class="board-toolbar">
+				<div class="board-controls-left">
+					<BoardFilterToolbar
+						{issues}
+						{agents}
+						filter={boardFilter}
+						onchange={handleBoardFilterChange}
+					/>
+				</div>
+				<div class="board-controls-right">
+					<button
+						class="toolbar-btn"
+						class:active={selectionMode}
+						onclick={toggleSelectionMode}
+						title={selectionMode ? 'Exit selection mode' : 'Select multiple'}
+					>
+						<Icon name={selectionMode ? 'x' : 'check-square'} size={14} />
+						{selectionMode ? 'Cancel' : 'Select'}
+					</button>
+					<ColumnVisibilityDropdown
+						{columns}
+						{hiddenColumns}
+						onchange={handleColumnVisibilityChange}
+					/>
+				</div>
+			</div>
+		{/if}
 
 		<main>
 			{#if activeTab === 'board'}
 				<div class="board-container">
 					<div class="kanban-board">
-						{#each columns as column}
+						{#each visibleColumns as column (column.status)}
 							<KanbanColumn
 								title={column.title}
 								status={column.status}
 								issues={filteredIssues}
 								{recentlyChanged}
+								{selectionMode}
+								selectedIds={selectedIssueIds}
 								onissueclick={handleIssueClick}
 								ondrop={handleColumnDrop}
+								onselect={handleIssueSelect}
 							/>
 						{/each}
 					</div>
@@ -1100,6 +1256,13 @@
 			/>
 		</div>
 	{/if}
+
+	<!-- Bulk actions bar for selection mode -->
+	<BulkActionsBar
+		{selectedIssues}
+		onstatuschange={handleBulkStatusChange}
+		onclear={clearSelection}
+	/>
 </div>
 
 <style>
@@ -1129,50 +1292,53 @@
 
 	header {
 		display: flex;
-		justify-content: space-between;
 		align-items: center;
-		padding: 24px 32px;
+		gap: 16px;
+		padding: 10px 20px;
 		background: #ffffff;
 		border-bottom: 1px solid #eaeaea;
+		min-height: 52px;
 	}
 
 	.header-left {
 		display: flex;
 		align-items: center;
-		gap: 16px;
+		gap: 10px;
+		flex-shrink: 0;
 	}
 
 	.back-link {
-		color: #888888;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		color: #6b7280;
 		text-decoration: none;
-		font-size: 14px;
-		transition: color 0.2s ease;
+		border-radius: 6px;
+		transition: all 0.15s ease;
 	}
 
 	.back-link:hover {
 		color: #1a1a1a;
+		background: #f3f4f6;
 	}
 
 	h1 {
 		margin: 0;
-		font-size: 24px;
-		font-weight: 400;
+		font-size: 16px;
+		font-weight: 500;
 		color: #1a1a1a;
+		font-family: 'Figtree', sans-serif;
+		white-space: nowrap;
 	}
 
 	.connection-status {
 		display: flex;
 		align-items: center;
-		gap: 6px;
-		font-size: 12px;
-		color: #888888;
-		padding: 6px 12px;
-		background: #f5f5f5;
-		border-radius: 20px;
-	}
-
-	.connection-status.connected {
-		color: #22c55e;
+		justify-content: center;
+		width: 8px;
+		height: 8px;
 	}
 
 	.status-dot {
@@ -1188,224 +1354,279 @@
 	}
 
 	@keyframes pulse {
-		0%,
-		100% {
-			opacity: 1;
-		}
-		50% {
-			opacity: 0.5;
-		}
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.5; }
+	}
+
+	.unsaved-pill {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding: 4px 8px;
+		background: #fef3c7;
+		border: 1px solid #fcd34d;
+		border-radius: 12px;
+		font-size: 11px;
+		font-weight: 600;
+		color: #92400e;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		font-family: 'Figtree', sans-serif;
+	}
+
+	.unsaved-pill:hover {
+		background: #fde68a;
+		border-color: #f59e0b;
+	}
+
+	.header-nav {
+		flex: 1;
+		display: flex;
+		justify-content: center;
+	}
+
+	.header-right {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		flex-shrink: 0;
+	}
+
+	.header-stats {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.stat-pill {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		padding: 4px 8px;
+		background: #f5f5f5;
+		border: none;
+		border-radius: 6px;
+		font-size: 12px;
+		color: #6b7280;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		font-family: 'Figtree', sans-serif;
+	}
+
+	.stat-pill:hover {
+		background: #e5e7eb;
+		color: #374151;
+	}
+
+	.stat-pill .stat-value {
+		font-weight: 600;
+		color: #374151;
+	}
+
+	.stat-pill .stat-label {
+		font-weight: 400;
+	}
+
+	.stat-pill.in-review .stat-value {
+		color: #7c3aed;
+	}
+
+	.stat-pill.total {
+		background: #1f2937;
+		color: #ffffff;
+	}
+
+	.stat-pill.total .stat-value {
+		color: #ffffff;
+	}
+
+	.stat-pill.total:hover {
+		background: #374151;
 	}
 
 	.header-actions {
 		display: flex;
 		align-items: center;
-		gap: 12px;
+		gap: 4px;
 	}
 
-	.server-btn,
-	.chat-btn,
-	.plan-btn,
-	.live-edit-btn {
+	.action-btn {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		padding: 8px 16px;
+		justify-content: center;
+		gap: 4px;
+		width: 32px;
+		height: 32px;
 		background: #f5f5f5;
 		border: 1px solid #e5e5e5;
 		border-radius: 8px;
-		font-size: 14px;
-		font-weight: 500;
-		color: #4b5563;
+		color: #6b7280;
 		cursor: pointer;
 		transition: all 0.15s ease;
-		font-family: 'Figtree', sans-serif;
 	}
 
-	.chat-btn:hover {
-		background: #ecfdf5;
-		border-color: #a7f3d0;
-		color: #059669;
+	.action-btn:hover:not(:disabled) {
+		background: #e5e7eb;
+		color: #374151;
 	}
 
-	.server-btn {
+	.action-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.action-btn.server {
 		background: #f0fdf4;
 		border-color: #bbf7d0;
 		color: #16a34a;
 	}
 
-	.server-btn:hover:not(:disabled) {
+	.action-btn.server:hover:not(:disabled) {
 		background: #dcfce7;
-		border-color: #86efac;
 		color: #15803d;
 	}
 
-	.server-btn.running {
+	.action-btn.server.running {
 		background: #fef2f2;
 		border-color: #fecaca;
 		color: #dc2626;
+		width: auto;
+		padding: 0 10px;
 	}
 
-	.server-btn.running:hover {
+	.action-btn.server.running:hover {
 		background: #fee2e2;
-		border-color: #fca5a5;
 		color: #b91c1c;
 	}
 
-	.server-btn.starting {
+	.action-btn.server.starting {
 		background: #fefce8;
 		border-color: #fef08a;
 		color: #ca8a04;
 	}
 
-	.server-btn:disabled {
-		opacity: 0.7;
-		cursor: not-allowed;
-	}
-
-	.server-btn :global(.icon[data-name="loader"]) {
+	.action-btn.server :global(.icon[data-name="loader"]) {
 		animation: spin 1s linear infinite;
 	}
 
-	.port-badge {
-		font-size: 12px;
+	.action-btn .port-badge {
+		font-size: 11px;
 		font-weight: 600;
-		background: rgba(220, 38, 38, 0.15);
-		padding: 2px 6px;
-		border-radius: 4px;
-		margin-left: 4px;
 	}
 
-	.live-edit-btn {
+	.action-btn.live-edit {
 		background: #fef3c7;
 		border-color: #fcd34d;
 		color: #b45309;
 	}
 
-	.live-edit-btn:hover {
+	.action-btn.live-edit:hover {
 		background: #fde68a;
-		border-color: #f59e0b;
 		color: #92400e;
 	}
 
-	.plan-btn {
+	.action-btn.plan {
 		background: #f5f3ff;
 		border-color: #ddd6fe;
 		color: #7c3aed;
 	}
 
-	.plan-btn:hover:not(:disabled) {
+	.action-btn.plan:hover:not(:disabled) {
 		background: #ede9fe;
-		border-color: #c4b5fd;
 		color: #6d28d9;
 	}
 
-	.plan-btn:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
+	.action-btn.chat {
+		background: #ecfdf5;
+		border-color: #a7f3d0;
+		color: #059669;
 	}
 
-	.header-stats {
-		display: flex;
-		gap: 32px;
-	}
-
-	.stat {
-		text-align: center;
-	}
-
-	.stat-value {
-		display: block;
-		font-size: 28px;
-		font-weight: 600;
-		color: #1a1a1a;
-		font-family: 'Hedvig Letters Serif', Georgia, serif;
-	}
-
-	.stat-value.in-review {
-		color: #8b5cf6;
-	}
-
-	.stat-label {
-		font-size: 12px;
-		color: #888888;
-		text-transform: uppercase;
-		letter-spacing: 0.5px;
-	}
-
-	.stat-clickable {
-		background: transparent;
-		border: none;
-		padding: 8px 12px;
-		border-radius: 8px;
-		cursor: pointer;
-		transition: all 0.15s ease;
-	}
-
-	.stat-clickable:hover {
-		background: #f3f4f6;
-	}
-
-	.stat-clickable:active {
-		background: #e5e7eb;
-	}
-
-	.unsaved-banner {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 8px;
-		width: 100%;
-		padding: 10px 20px;
-		background: #fffbeb;
-		border: none;
-		border-bottom: 1px solid #fcd34d;
-		color: #92400e;
-		font-size: 14px;
-		font-weight: 500;
-		cursor: pointer;
-		transition: background 0.15s ease;
-		font-family: 'Figtree', sans-serif;
-	}
-
-	.unsaved-banner:hover {
-		background: #fef3c7;
-	}
-
-	.unsaved-banner .banner-action {
-		color: #b45309;
-		margin-left: 8px;
+	.action-btn.chat:hover {
+		background: #d1fae5;
+		color: #047857;
 	}
 
 	.error-banner {
 		background: #fef2f2;
 		border-bottom: 1px solid #fecaca;
-		padding: 24px;
+		padding: 16px 24px;
 		text-align: center;
 	}
 
 	.error-banner p {
-		margin: 0 0 12px 0;
+		margin: 0 0 8px 0;
 		color: #dc3545;
+		font-size: 14px;
 	}
 
 	.error-link {
 		color: #1a1a1a;
 		text-decoration: none;
 		font-weight: 500;
+		font-size: 13px;
 	}
 
 	.error-link:hover {
 		text-decoration: underline;
 	}
 
-	.tab-row {
+	.board-toolbar {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		padding: 16px 32px;
+		padding: 8px 20px;
+		background: #fafafa;
+		border-bottom: 1px solid #f0f0f0;
+		gap: 16px;
+	}
+
+	.board-controls-left {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex: 1;
+		min-width: 0;
+	}
+
+	.board-controls-right {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-shrink: 0;
+	}
+
+	.toolbar-btn {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		padding: 5px 10px;
 		background: #ffffff;
-		border-bottom: 1px solid #eaeaea;
+		border: 1px solid #e5e5e5;
+		border-radius: 6px;
+		font-size: 12px;
+		font-weight: 500;
+		color: #6b7280;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		font-family: 'Figtree', sans-serif;
+	}
+
+	.toolbar-btn:hover {
+		background: #f5f5f5;
+		border-color: #d1d5db;
+		color: #374151;
+	}
+
+	.toolbar-btn.active {
+		background: #dbeafe;
+		border-color: #93c5fd;
+		color: #1d4ed8;
+	}
+
+	.toolbar-btn.active:hover {
+		background: #bfdbfe;
+		border-color: #60a5fa;
 	}
 
 	main {
@@ -1419,8 +1640,8 @@
 	.board-container {
 		flex: 1;
 		display: flex;
-		gap: 24px;
-		padding: 24px 32px;
+		gap: 16px;
+		padding: 12px 20px;
 		overflow: auto;
 	}
 
