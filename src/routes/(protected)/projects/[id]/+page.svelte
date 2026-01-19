@@ -29,6 +29,7 @@
 	import BeadsListView from '../../../../components/BeadsListView.svelte';
 	import PlanningView from '../../../../components/PlanningView.svelte';
 	import ExecutionView from '../../../../components/ExecutionView.svelte';
+	import StaleBeadsPanel from '../../../../components/StaleBeadsPanel.svelte';
 	import type { ListFilters } from '../../../../components/BeadsListFilters.svelte';
 
 	let project: ProjectInfo | null = $state(null);
@@ -908,6 +909,10 @@
 					</div>
 
 					<aside>
+						<StaleBeadsPanel
+							{issues}
+							onissueclick={handleIssueClick}
+						/>
 						<EventFeed {events} />
 					</aside>
 				</div>
