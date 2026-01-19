@@ -5,8 +5,7 @@
 	import type { SessionPrompt } from '$lib/prompt-types';
 	import type { KnownIssue } from '$lib/session-context-types';
 	import KanbanColumn, { type ColumnDropData } from '../../../../components/KanbanColumn.svelte';
-	import EventFeed from '../../../../components/EventFeed.svelte';
-	import ClaimBeadModal from '../../../../components/ClaimBeadModal.svelte';
+		import ClaimBeadModal from '../../../../components/ClaimBeadModal.svelte';
 	import CompleteBeadModal from '../../../../components/CompleteBeadModal.svelte';
 	import { toasts } from '$lib/stores/toast-store';
 	import { isValidTransition, transitionRequiresModal, type BeadStatus } from '$lib/bead-lifecycle';
@@ -1177,7 +1176,6 @@
 								{issues}
 								onissueclick={handleIssueClick}
 							/>
-							<EventFeed {events} />
 						</aside>
 					</div>
 				{:else if activeTab === 'epics'}
@@ -1246,7 +1244,7 @@
 				</div>
 			{:else if activeTab === 'history'}
 				<div class="history-container">
-					<HistoryTabView projectId={$page.params.id} />
+					<HistoryTabView projectId={$page.params.id} {events} />
 				</div>
 			{:else if activeTab === 'settings'}
 				<div class="settings-container">

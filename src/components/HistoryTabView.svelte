@@ -1,21 +1,33 @@
 <script lang="ts">
 	import VersionHistoryView from './VersionHistoryView.svelte';
 	import SessionHistoryView from './SessionHistoryView.svelte';
+	import RecentEventsPanel from './RecentEventsPanel.svelte';
 	import Icon from './Icon.svelte';
+	import type { Event } from '$lib/types';
 
-	type HistorySubTab = 'git' | 'sessions';
+	type HistorySubTab = 'activity' | 'git' | 'sessions';
 
 	let {
-		projectId
+		projectId,
+		events = []
 	}: {
 		projectId: string;
+		events?: Event[];
 	} = $props();
 
-	let activeSubTab = $state<HistorySubTab>('git');
+	let activeSubTab = $state<HistorySubTab>('activity');
 </script>
 
 <div class="history-tab">
 	<div class="sub-tab-bar">
+		<button
+			class="sub-tab"
+			class:active={activeSubTab === 'activity'}
+			onclick={() => activeSubTab = 'activity'}
+		>
+			<Icon name="activity" size={16} />
+			<span>Activity</span>
+		</button>
 		<button
 			class="sub-tab"
 			class:active={activeSubTab === 'git'}
@@ -35,7 +47,9 @@
 	</div>
 
 	<div class="sub-tab-content">
-		{#if activeSubTab === 'git'}
+		{#if activeSubTab === 'activity'}
+			<RecentEventsPanel {events} {projectId} />
+		{:else if activeSubTab === 'git'}
 			<VersionHistoryView {projectId} />
 		{:else if activeSubTab === 'sessions'}
 			<SessionHistoryView {projectId} isVisible={activeSubTab === 'sessions'} />
