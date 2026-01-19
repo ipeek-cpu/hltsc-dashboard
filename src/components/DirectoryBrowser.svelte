@@ -6,6 +6,7 @@
 		name: string;
 		path: string;
 		isBeadsProject: boolean;
+		hasBeadsDir: boolean; // Has .beads directory (may be partial init)
 	}
 
 	interface BrowseResponse {
@@ -13,6 +14,7 @@
 		parentPath: string | null;
 		directories: DirectoryEntry[];
 		isBeadsProject: boolean;
+		hasBeadsDir: boolean;
 	}
 
 	interface ExistingProject {
@@ -32,6 +34,7 @@
 	let parentPath = $state<string | null>(null);
 	let directories = $state<DirectoryEntry[]>([]);
 	let isBeadsProject = $state(false);
+	let hasBeadsDir = $state(false);
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let existingProjectPaths = $state<Set<string>>(new Set());
@@ -71,6 +74,7 @@
 			parentPath = data.parentPath;
 			directories = data.directories;
 			isBeadsProject = data.isBeadsProject;
+			hasBeadsDir = data.hasBeadsDir;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'An error occurred';
 		} finally {
@@ -176,9 +180,11 @@
 			{:else}
 				{#each directories as dir}
 					{@const alreadyAdded = isAlreadyAdded(dir.path)}
+					{@const hasPartialBeads = dir.hasBeadsDir && !dir.isBeadsProject}
 					<div
 						class="directory-item"
 						class:is-beads={dir.isBeadsProject && !alreadyAdded}
+						class:has-beads-dir={hasPartialBeads && !alreadyAdded}
 						class:is-added={alreadyAdded}
 						class:disabled={alreadyAdded}
 						onclick={() => !alreadyAdded && navigateTo(dir.path)}
@@ -187,7 +193,7 @@
 						onkeydown={(e) => e.key === 'Enter' && !alreadyAdded && navigateTo(dir.path)}
 					>
 						<span class="folder-icon">
-							<Icon name={dir.isBeadsProject ? 'grid' : 'folder'} size={18} />
+							<Icon name={dir.isBeadsProject || dir.hasBeadsDir ? 'grid' : 'folder'} size={18} />
 						</span>
 						<span class="folder-name">{dir.name}</span>
 						<div class="folder-actions">
@@ -195,6 +201,8 @@
 								<span class="added-badge">Already added</span>
 							{:else if dir.isBeadsProject}
 								<span class="beads-badge">Beads Project</span>
+							{:else if dir.hasBeadsDir}
+								<span class="beads-partial-badge">Has .beads</span>
 							{/if}
 							{#if !alreadyAdded}
 								<button
@@ -403,6 +411,18 @@
 		background: #dbeafe;
 	}
 
+	.directory-item.has-beads-dir {
+		background: #fffbeb;
+	}
+
+	.directory-item.has-beads-dir:hover {
+		background: #fef3c7;
+	}
+
+	.directory-item.has-beads-dir .folder-icon {
+		color: #f59e0b;
+	}
+
 	.directory-item.is-added {
 		background: #f5f3ff;
 	}
@@ -460,6 +480,15 @@
 	.beads-badge {
 		font-size: 11px;
 		background: #3b82f6;
+		color: #ffffff;
+		padding: 3px 10px;
+		border-radius: 12px;
+		font-weight: 500;
+	}
+
+	.beads-partial-badge {
+		font-size: 11px;
+		background: #f59e0b;
 		color: #ffffff;
 		padding: 3px 10px;
 		border-radius: 12px;

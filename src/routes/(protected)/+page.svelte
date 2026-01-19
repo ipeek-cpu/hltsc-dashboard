@@ -1,16 +1,9 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
-	import { goto } from '$app/navigation';
 	import type { ProjectWithStats } from '$lib/dashboard-db';
 	import ProjectCard from '../../components/ProjectCard.svelte';
 	import DirectoryBrowser from '../../components/DirectoryBrowser.svelte';
 	import Icon from '../../components/Icon.svelte';
-
-	async function handleLogout() {
-		const { logOut } = await import('$lib/firebase');
-		await logOut();
-		goto('/login');
-	}
 
 	let projects: ProjectWithStats[] = $state([]);
 	let loading = $state(true);
@@ -136,13 +129,6 @@
 			<a href="/settings" class="settings-btn" title="Settings">
 				<Icon name="settings" size={18} />
 			</a>
-			<button
-				class="logout-btn"
-				title="Sign out"
-				onclick={handleLogout}
-			>
-				<Icon name="log-out" size={18} />
-			</button>
 			<a href="/projects/add" class="add-btn">
 				<Icon name="plus" size={16} strokeWidth={2.5} />
 				Add Project
@@ -289,25 +275,6 @@
 	.settings-btn:hover {
 		background: #f5f5f5;
 		color: #1a1a1a;
-	}
-
-	.logout-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 40px;
-		height: 40px;
-		border-radius: 12px;
-		background: transparent;
-		border: none;
-		color: #666666;
-		cursor: pointer;
-		transition: all 0.2s ease;
-	}
-
-	.logout-btn:hover {
-		background: #fef2f2;
-		color: #dc2626;
 	}
 
 	.add-btn {

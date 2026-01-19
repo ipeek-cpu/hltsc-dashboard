@@ -2,6 +2,8 @@
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
 	import type { Issue, Event, StreamMessage, ProjectInfo, IssueWithDetails, Agent, BoardFilter } from '$lib/types';
+	import type { SessionPrompt } from '$lib/prompt-types';
+	import type { KnownIssue } from '$lib/session-context-types';
 	import KanbanColumn from '../../../../components/KanbanColumn.svelte';
 	import EventFeed from '../../../../components/EventFeed.svelte';
 	import TabSwitcher from '../../../../components/TabSwitcher.svelte';
@@ -15,7 +17,15 @@
 	import TaskRunnerPanel from '../../../../components/TaskRunnerPanel.svelte';
 	import Icon from '../../../../components/Icon.svelte';
 	import VersionHistoryView from '../../../../components/VersionHistoryView.svelte';
+	import HistoryTabView from '../../../../components/HistoryTabView.svelte';
 	import LiveEditMode from '../../../../components/LiveEditMode.svelte';
+	import OrchestrationView from '../../../../components/OrchestrationView.svelte';
+	import PromptEditor from '../../../../components/PromptEditor.svelte';
+	import KnownIssuesPanel from '../../../../components/KnownIssuesPanel.svelte';
+	import BeadsListView from '../../../../components/BeadsListView.svelte';
+	import PlanningView from '../../../../components/PlanningView.svelte';
+	import ExecutionView from '../../../../components/ExecutionView.svelte';
+	import type { ListFilters } from '../../../../components/BeadsListFilters.svelte';
 
 	let project: ProjectInfo | null = $state(null);
 	let issues: Issue[] = $state([]);
@@ -27,10 +37,21 @@
 	let loadError = $state<string | null>(null);
 
 	// Tab and detail sheet state
-	let activeTab: 'board' | 'epics' | 'agents' | 'history' = $state('board');
+	let activeTab: 'board' | 'epics' | 'agents' | 'planning' | 'execution' | 'orchestration' | 'history' | 'settings' = $state('board');
 	let selectedIssueId = $state<string | null>(null);
 	let selectedIssue = $state<IssueWithDetails | null>(null);
 	let sheetOpen = $state(false);
+
+	// Settings/Prompts state
+	let prompts = $state<SessionPrompt[]>([]);
+	let startPrompt = $state<SessionPrompt | null>(null);
+	let endPrompt = $state<SessionPrompt | null>(null);
+	let hasPromptsDir = $state(false);
+	let promptsFetched = $state(false);
+
+	// Known issues state
+	let knownIssues = $state<KnownIssue[]>([]);
+	let knownIssuesFetched = $state(false);
 
 	// Navigation history for back button
 	let issueHistory = $state<string[]>([]);
@@ -63,13 +84,19 @@
 	// Board filter state
 	let boardFilter: BoardFilter = $state({ type: 'all' });
 
+	// List view state
+	let showListView = $state(false);
+	let listViewFilters = $state<Partial<ListFilters> | null>(null);
+
 	// Git status for unsaved changes banner
 	let hasUnsavedChanges = $state(false);
 	let unsavedChangeCount = $state(0);
 
 	const columns = [
 		{ title: 'Open', status: 'open' },
+		{ title: 'Ready', status: 'ready' },
 		{ title: 'In Progress', status: 'in_progress' },
+		{ title: 'In Review', status: 'in_review' },
 		{ title: 'Blocked', status: 'blocked' },
 		{ title: 'Closed', status: 'closed' }
 	];
@@ -192,6 +219,7 @@
 
 	let openCount = $derived(issues.filter((i) => i.status === 'open').length);
 	let inProgressCount = $derived(issues.filter((i) => i.status === 'in_progress').length);
+	let inReviewCount = $derived(issues.filter((i) => i.status === 'in_review').length);
 
 	// Derive the active run ID for the selected issue
 	let selectedIssueActiveRunId = $derived(() => {
@@ -276,7 +304,7 @@
 		issueHistory = []; // Clear history when closing
 	}
 
-	function handleTabChange(tab: 'board' | 'epics' | 'agents' | 'history') {
+	function handleTabChange(tab: 'board' | 'epics' | 'agents' | 'planning' | 'execution' | 'orchestration' | 'history' | 'settings') {
 		activeTab = tab;
 	}
 
@@ -322,6 +350,27 @@
 		}
 	}
 
+	// Fetch prompts when switching to settings tab
+	async function fetchPrompts() {
+		const projectId = $page.params.id;
+		if (!projectId) return;
+
+		try {
+			const response = await fetch(`/api/projects/${projectId}/prompts`);
+			if (response.ok) {
+				const data = await response.json();
+				prompts = data.prompts || [];
+				startPrompt = data.startPrompt || null;
+				endPrompt = data.endPrompt || null;
+				hasPromptsDir = data.hasPromptsDir ?? false;
+			}
+		} catch (err) {
+			console.error('Error fetching prompts:', err);
+		} finally {
+			promptsFetched = true;
+		}
+	}
+
 	// Check git status for unsaved changes
 	async function checkGitStatus() {
 		const projectId = $page.params.id;
@@ -349,10 +398,41 @@
 		}
 	});
 
-	// Fetch agents when tab changes to agents
+	// Fetch agents when tab changes to agents, planning, or execution
 	$effect(() => {
-		if (browser && activeTab === 'agents' && !agentsFetched && !loadingAgents) {
+		if (browser && (activeTab === 'agents' || activeTab === 'planning' || activeTab === 'execution') && !agentsFetched && !loadingAgents) {
 			fetchAgents();
+		}
+	});
+
+	// Fetch prompts when tab changes to settings
+	$effect(() => {
+		if (browser && activeTab === 'settings' && !promptsFetched) {
+			fetchPrompts();
+		}
+	});
+
+	// Fetch known issues when tab changes to settings
+	async function fetchKnownIssues() {
+		const projectId = $page.params.id;
+		if (!projectId) return;
+
+		try {
+			const response = await fetch(`/api/projects/${projectId}/known-issues`);
+			if (response.ok) {
+				const data = await response.json();
+				knownIssues = data.issues || [];
+			}
+		} catch (err) {
+			console.error('Error fetching known issues:', err);
+		} finally {
+			knownIssuesFetched = true;
+		}
+	}
+
+	$effect(() => {
+		if (browser && activeTab === 'settings' && !knownIssuesFetched) {
+			fetchKnownIssues();
 		}
 	});
 
@@ -461,6 +541,21 @@
 	// Board filter
 	function handleBoardFilterChange(filter: BoardFilter) {
 		boardFilter = filter;
+	}
+
+	// List view handlers
+	function openListView(filters?: Partial<ListFilters>) {
+		listViewFilters = filters || null;
+		showListView = true;
+	}
+
+	function closeListView() {
+		showListView = false;
+		listViewFilters = null;
+	}
+
+	function handleStatClick(status: string) {
+		openListView({ status });
 	}
 
 	// Live Edit handlers
@@ -622,18 +717,22 @@
 			</button>
 		</div>
 		<div class="header-stats">
-			<div class="stat">
+			<button class="stat stat-clickable" onclick={() => handleStatClick('open')}>
 				<span class="stat-value">{openCount}</span>
 				<span class="stat-label">Open</span>
-			</div>
-			<div class="stat">
+			</button>
+			<button class="stat stat-clickable" onclick={() => handleStatClick('in_progress')}>
 				<span class="stat-value">{inProgressCount}</span>
 				<span class="stat-label">In Progress</span>
-			</div>
-			<div class="stat">
+			</button>
+			<button class="stat stat-clickable" onclick={() => handleStatClick('in_review')}>
+				<span class="stat-value in-review">{inReviewCount}</span>
+				<span class="stat-label">In Review</span>
+			</button>
+			<button class="stat stat-clickable" onclick={() => openListView()}>
 				<span class="stat-value">{issues.length}</span>
 				<span class="stat-label">Total</span>
-			</div>
+			</button>
 		</div>
 	</header>
 
@@ -709,9 +808,78 @@
 						/>
 					{/if}
 				</div>
+			{:else if activeTab === 'planning'}
+				<div class="planning-container">
+					<PlanningView
+						{issues}
+						{agents}
+						projectId={$page.params.id}
+						onissueclick={handleIssueClick}
+						onchat={(agent) => {
+							chatAgent = agent;
+							chatSheetOpen = true;
+						}}
+					/>
+				</div>
+			{:else if activeTab === 'execution'}
+				<div class="execution-container">
+					<ExecutionView
+						{issues}
+						{agents}
+						projectId={$page.params.id}
+						{activeRuns}
+						onissueclick={handleIssueClick}
+						onchat={(agent) => {
+							chatAgent = agent;
+							chatSheetOpen = true;
+						}}
+						onstarttask={handleStartTask}
+						onstoptask={handleStopTask}
+					/>
+				</div>
+			{:else if activeTab === 'orchestration'}
+				<div class="orchestration-container">
+					<OrchestrationView
+						projectId={$page.params.id}
+						isVisible={activeTab === 'orchestration'}
+					/>
+				</div>
 			{:else if activeTab === 'history'}
 				<div class="history-container">
-					<VersionHistoryView projectId={$page.params.id} />
+					<HistoryTabView projectId={$page.params.id} />
+				</div>
+			{:else if activeTab === 'settings'}
+				<div class="settings-container">
+					<div class="settings-section">
+						<h2>Known Issues</h2>
+						<p class="settings-description">
+							Track known issues, CI failures, blockers, and notes. Active issues are
+							automatically injected into new chat sessions so Claude doesn't attempt to fix them
+							unless instructed.
+						</p>
+						<KnownIssuesPanel
+							issues={knownIssues}
+							projectId={$page.params.id}
+							onupdate={fetchKnownIssues}
+						/>
+					</div>
+
+					<div class="settings-section">
+						<h2>Session Prompts</h2>
+						<p class="settings-description">
+							Configure prompts that are automatically injected at session start and end.
+							Start prompts help initialize context, while end prompts help preserve knowledge
+							across sessions.
+						</p>
+						<PromptEditor
+							{prompts}
+							{startPrompt}
+							{endPrompt}
+							{hasPromptsDir}
+							projectId={$page.params.id}
+							onupdate={fetchPrompts}
+						/>
+					</div>
 				</div>
 			{/if}
 		</main>
@@ -725,6 +893,7 @@
 		onback={handleBack}
 		canGoBack={issueHistory.length > 0}
 		projectId={$page.params.id}
+		{agents}
 		onupdate={handleIssueUpdate}
 		ondelete={handleIssueDelete}
 		onstarttask={handleStartTask}
@@ -762,6 +931,19 @@
 		projectName={project?.name || 'Project'}
 		onclose={handleLiveEditClose}
 	/>
+
+	{#if showListView}
+		<div class="list-view-overlay">
+			<BeadsListView
+				{issues}
+				{agents}
+				initialFilters={listViewFilters}
+				projectId={$page.params.id}
+				onissueclick={handleIssueClick}
+				onclose={closeListView}
+			/>
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -984,11 +1166,32 @@
 		font-family: 'Hedvig Letters Serif', Georgia, serif;
 	}
 
+	.stat-value.in-review {
+		color: #8b5cf6;
+	}
+
 	.stat-label {
 		font-size: 12px;
 		color: #888888;
 		text-transform: uppercase;
 		letter-spacing: 0.5px;
+	}
+
+	.stat-clickable {
+		background: transparent;
+		border: none;
+		padding: 8px 12px;
+		border-radius: 8px;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.stat-clickable:hover {
+		background: #f3f4f6;
+	}
+
+	.stat-clickable:active {
+		background: #e5e7eb;
 	}
 
 	.unsaved-banner {
@@ -1076,10 +1279,57 @@
 		overflow-y: auto;
 	}
 
+	.planning-container {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
+	.execution-container {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
+	.orchestration-container {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
 	.history-container {
 		flex: 1;
 		overflow-y: auto;
 		background: #fafafa;
+	}
+
+	.settings-container {
+		flex: 1;
+		padding: 24px 32px;
+		overflow-y: auto;
+		background: #fafafa;
+	}
+
+	.settings-section {
+		max-width: 900px;
+		margin: 0 auto;
+	}
+
+	.settings-section h2 {
+		margin: 0 0 8px 0;
+		font-size: 20px;
+		font-weight: 600;
+		color: #1f2937;
+	}
+
+	.settings-description {
+		margin: 0 0 20px 0;
+		font-size: 14px;
+		color: #6b7280;
+		line-height: 1.6;
 	}
 
 	.kanban-board {
@@ -1092,5 +1342,28 @@
 
 	aside {
 		flex-shrink: 0;
+	}
+
+	.list-view-overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 1000;
+		background: rgba(0, 0, 0, 0.5);
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		padding: 48px;
+	}
+
+	.list-view-overlay > :global(.list-view) {
+		width: 100%;
+		max-width: 1200px;
+		max-height: 100%;
+		border-radius: 12px;
+		box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+		overflow: hidden;
 	}
 </style>

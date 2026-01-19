@@ -18,6 +18,7 @@ export const GET: RequestHandler = async ({ params }) => {
 			...project,
 			open_count: counts.open,
 			in_progress_count: counts.in_progress,
+			in_review_count: counts.in_review,
 			total_count: counts.total
 		});
 	} catch {
@@ -25,6 +26,7 @@ export const GET: RequestHandler = async ({ params }) => {
 			...project,
 			open_count: 0,
 			in_progress_count: 0,
+			in_review_count: 0,
 			total_count: 0
 		});
 	}

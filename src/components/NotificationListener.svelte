@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
-	import { goto } from '$app/navigation';
 	import { onMount, onDestroy } from 'svelte';
 
 	interface NotificationRequest {
@@ -13,30 +12,26 @@
 	}
 
 	let eventSource: EventSource | null = null;
-	let notificationApi: typeof import('@tauri-apps/plugin-notification') | null = null;
 	let hasPermission = false;
 
 	onMount(async () => {
 		if (!browser) return;
 
-		// Try to load Tauri notification API
-		try {
-			notificationApi = await import('@tauri-apps/plugin-notification');
-
-			// Check/request permission
-			const granted = await notificationApi.isPermissionGranted();
-			if (!granted) {
-				const result = await notificationApi.requestPermission();
-				hasPermission = result === 'granted';
-			} else {
-				hasPermission = true;
-			}
-
-			console.log('[NotificationListener] Permission:', hasPermission);
-		} catch (e) {
-			console.log('[NotificationListener] Tauri notification API not available:', e);
+		// Check if browser supports notifications
+		if (!('Notification' in window)) {
+			console.log('[NotificationListener] Browser does not support notifications');
 			return;
 		}
+
+		// Request permission
+		if (Notification.permission === 'granted') {
+			hasPermission = true;
+		} else if (Notification.permission !== 'denied') {
+			const permission = await Notification.requestPermission();
+			hasPermission = permission === 'granted';
+		}
+
+		console.log('[NotificationListener] Permission:', hasPermission);
 
 		if (!hasPermission) {
 			console.log('[NotificationListener] Notification permission not granted');
@@ -67,13 +62,13 @@
 		}
 	});
 
-	async function showNotification(notification: NotificationRequest) {
-		if (!notificationApi || !hasPermission) return;
+	function showNotification(notification: NotificationRequest) {
+		if (!hasPermission) return;
 
 		try {
-			await notificationApi.sendNotification({
-				title: notification.title,
-				body: notification.body
+			new Notification(notification.title, {
+				body: notification.body,
+				icon: '/favicon.png'
 			});
 			console.log('[NotificationListener] Sent notification:', notification.title);
 		} catch (e) {

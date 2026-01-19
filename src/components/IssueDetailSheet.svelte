@@ -1,13 +1,13 @@
 <script lang="ts">
   import { marked } from 'marked';
-  import type { IssueWithDetails, Issue } from '$lib/types';
+  import type { IssueWithDetails, Issue, Agent } from '$lib/types';
   import Icon from './Icon.svelte';
   import TypeBadge from './TypeBadge.svelte';
   import CommentThread from './CommentThread.svelte';
   import MarkdownEditor from './MarkdownEditor.svelte';
   import ConfirmDeleteModal from './ConfirmDeleteModal.svelte';
 
-  let { issue, isOpen, onclose, onissueclick, onback, canGoBack = false, onupdate, ondelete, projectId, onstarttask, onchattask, onstoptask, activeRunId = null }: {
+  let { issue, isOpen, onclose, onissueclick, onback, canGoBack = false, onupdate, ondelete, projectId, agents = [], onstarttask, onchattask, onstoptask, activeRunId = null }: {
     issue: IssueWithDetails | null;
     isOpen: boolean;
     onclose: () => void;
@@ -17,6 +17,7 @@
     onupdate?: (updatedIssue: IssueWithDetails) => void;
     ondelete?: (deletedIds: string[]) => void;
     projectId?: string;
+    agents?: Agent[];
     onstarttask?: (issue: Issue, mode: 'autonomous' | 'guided') => void;
     onchattask?: (issue: Issue) => void;
     onstoptask?: (runId: string) => void;
@@ -143,6 +144,39 @@
   function cancelDelete() {
     showDeleteModal = false;
     deletePreview = null;
+  }
+
+  // Assignee update
+  let isUpdatingAssignee = $state(false);
+
+  async function updateAssignee(newAssignee: string | null) {
+    if (!issue || !projectId) return;
+
+    isUpdatingAssignee = true;
+    try {
+      const response = await fetch(`/api/projects/${projectId}/issues/${issue.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assignee: newAssignee })
+      });
+
+      if (response.ok) {
+        const updatedIssue = await response.json();
+        onupdate?.(updatedIssue);
+      } else {
+        console.error('Failed to update assignee');
+      }
+    } catch (err) {
+      console.error('Error updating assignee:', err);
+    } finally {
+      isUpdatingAssignee = false;
+    }
+  }
+
+  function handleAssigneeChange(event: Event) {
+    const select = event.target as HTMLSelectElement;
+    const value = select.value || null;
+    updateAssignee(value);
   }
 
   // Track visibility separately to allow close animation
@@ -322,15 +356,29 @@
                 {priorityLabels[issue.priority]?.label || 'Unknown'}
               </span>
             </div>
-            {#if issue.assignee}
-              <div class="metadata-row">
-                <span class="metadata-label">Assignee</span>
+            <div class="metadata-row">
+              <span class="metadata-label">Assignee</span>
+              {#if agents.length > 0}
+                <select
+                  class="assignee-select"
+                  value={issue.assignee || ''}
+                  onchange={handleAssigneeChange}
+                  disabled={isUpdatingAssignee}
+                >
+                  <option value="">Unassigned</option>
+                  {#each agents as agent}
+                    <option value={agent.frontmatter.name}>{agent.frontmatter.name}</option>
+                  {/each}
+                </select>
+              {:else if issue.assignee}
                 <span class="assignee-badge">
                   <Icon name="user" size={14} />
                   {issue.assignee}
                 </span>
-              </div>
-            {/if}
+              {:else}
+                <span class="assignee-empty">Unassigned</span>
+              {/if}
+            </div>
           </div>
 
           <div class="dates-section">
@@ -850,6 +898,39 @@
     gap: 6px;
     font-size: 13px;
     color: #1a1a1a;
+  }
+
+  .assignee-select {
+    padding: 6px 10px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: 'Figtree', sans-serif;
+    color: #1a1a1a;
+    cursor: pointer;
+    min-width: 140px;
+    transition: border-color 0.15s ease;
+  }
+
+  .assignee-select:hover:not(:disabled) {
+    border-color: #d1d5db;
+  }
+
+  .assignee-select:focus {
+    outline: none;
+    border-color: #3b82f6;
+  }
+
+  .assignee-select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .assignee-empty {
+    font-size: 13px;
+    color: #9ca3af;
+    font-style: italic;
   }
 
   .dates-section {

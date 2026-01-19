@@ -11,6 +11,14 @@ export interface Issue {
   updated_at: string;
   closed_at: string | null;
   close_reason: string;
+  // Lifecycle fields for bead workflow enforcement
+  branch_name?: string;
+  agent_id?: string;
+  commit_hash?: string;
+  execution_log?: string;
+  pr_url?: string;
+  pr_status?: 'open' | 'merged' | 'closed';
+  ci_status?: 'pending' | 'success' | 'failure';
 }
 
 export interface Dependency {
@@ -83,6 +91,7 @@ export interface Agent {
   frontmatter: AgentFrontmatter;
   content: string; // Markdown content after frontmatter
   rawContent: string; // Full file content for editing
+  scope: 'global' | 'project'; // Whether agent is from global or project agents dir
 }
 
 export type BoardFilter =

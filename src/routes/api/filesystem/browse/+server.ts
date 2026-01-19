@@ -8,6 +8,7 @@ export interface DirectoryEntry {
 	name: string;
 	path: string;
 	isBeadsProject: boolean;
+	hasBeadsDir: boolean; // Has .beads directory (may be partial init)
 }
 
 export interface BrowseResponse {
@@ -15,11 +16,17 @@ export interface BrowseResponse {
 	parentPath: string | null;
 	directories: DirectoryEntry[];
 	isBeadsProject: boolean;
+	hasBeadsDir: boolean;
 }
 
 function isBeadsProject(dirPath: string): boolean {
 	const beadsDbPath = path.join(dirPath, '.beads', 'beads.db');
 	return fs.existsSync(beadsDbPath);
+}
+
+function hasBeadsDir(dirPath: string): boolean {
+	const beadsDir = path.join(dirPath, '.beads');
+	return fs.existsSync(beadsDir);
 }
 
 function getDirectories(dirPath: string): DirectoryEntry[] {
@@ -40,7 +47,8 @@ function getDirectories(dirPath: string): DirectoryEntry[] {
 					directories.push({
 						name: entry.name,
 						path: fullPath,
-						isBeadsProject: isBeadsProject(fullPath)
+						isBeadsProject: isBeadsProject(fullPath),
+						hasBeadsDir: hasBeadsDir(fullPath)
 					});
 				} catch {
 					// Skip inaccessible directories
@@ -48,10 +56,14 @@ function getDirectories(dirPath: string): DirectoryEntry[] {
 			}
 		}
 
-		// Sort: Beads projects first, then alphabetically
+		// Sort: Beads projects first, then folders with .beads dir, then alphabetically
 		directories.sort((a, b) => {
+			// Fully initialized beads projects first
 			if (a.isBeadsProject && !b.isBeadsProject) return -1;
 			if (!a.isBeadsProject && b.isBeadsProject) return 1;
+			// Then folders with .beads directory (partial init)
+			if (a.hasBeadsDir && !b.hasBeadsDir) return -1;
+			if (!a.hasBeadsDir && b.hasBeadsDir) return 1;
 			return a.name.localeCompare(b.name);
 		});
 
@@ -89,7 +101,8 @@ export const GET: RequestHandler = async ({ url }) => {
 		currentPath,
 		parentPath: hasParent ? parentPath : null,
 		directories: getDirectories(currentPath),
-		isBeadsProject: isBeadsProject(currentPath)
+		isBeadsProject: isBeadsProject(currentPath),
+		hasBeadsDir: hasBeadsDir(currentPath)
 	};
 
 	return json(response);

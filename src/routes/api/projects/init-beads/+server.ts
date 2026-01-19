@@ -45,11 +45,21 @@ export const POST: RequestHandler = async ({ request }) => {
 		return json({ success: false, error: 'Path is not a directory' }, { status: 400 });
 	}
 
-	// Check if beads is already initialized
-	const beadsDir = `${projectPath}/.beads`;
-	if (fs.existsSync(beadsDir)) {
-		return json({ success: false, error: 'Beads is already initialized in this directory' }, { status: 400 });
+	// Check if beads is already fully initialized (has the database)
+	const beadsDbPath = `${projectPath}/.beads/beads.db`;
+	if (fs.existsSync(beadsDbPath)) {
+		// Beads is fully initialized - tell the client they can add it directly
+		return json({
+			success: false,
+			error: 'Beads is already initialized in this directory',
+			alreadyInitialized: true
+		}, { status: 400 });
 	}
+
+	// If .beads directory exists but no database, it's a partial/corrupted state
+	// Let bd init handle it (it may repair or fail gracefully)
+	const beadsDir = `${projectPath}/.beads`;
+	const hasPartialInit = fs.existsSync(beadsDir);
 
 	try {
 		// Run `bd init` in the project directory

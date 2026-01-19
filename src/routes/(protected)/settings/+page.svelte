@@ -4,6 +4,7 @@
 	import McpServerList from '../../../components/McpServerList.svelte';
 	import McpRegistrySearch from '../../../components/McpRegistrySearch.svelte';
 	import type { McpServerWithScope, McpServerConfig } from '$lib/types';
+	import type { RepairSummary } from '$lib/data-repair';
 
 	// Tab state
 	type Tab = 'mcp' | 'general' | 'claude';
@@ -19,6 +20,13 @@
 	let skillLevel = $state<SkillLevel | null>(null);
 	let loadingSkill = $state(true);
 
+	// Data repair state
+	let projects = $state<{ id: string; name: string }[]>([]);
+	let selectedProjectId = $state<string>('');
+	let repairPreview = $state<RepairSummary | null>(null);
+	let repairResult = $state<RepairSummary | null>(null);
+	let loadingRepair = $state(false);
+	let repairError = $state<string | null>(null);
 
 	// Claude Code status
 	let claudeStatus = $state<{ installed: boolean; version?: string } | null>(null);
@@ -116,11 +124,70 @@
 		}
 	}
 
+	async function loadProjects() {
+		try {
+			const response = await fetch('/api/projects');
+			if (response.ok) {
+				projects = await response.json();
+				if (projects.length > 0 && !selectedProjectId) {
+					selectedProjectId = projects[0].id;
+				}
+			}
+		} catch {
+			// Ignore errors
+		}
+	}
+
+	async function previewRepairs() {
+		if (!selectedProjectId) return;
+
+		loadingRepair = true;
+		repairError = null;
+		repairResult = null;
+
+		try {
+			const response = await fetch(`/api/projects/${selectedProjectId}/repair`);
+			if (!response.ok) {
+				const data = await response.json();
+				throw new Error(data.error || 'Failed to preview repairs');
+			}
+			repairPreview = await response.json();
+		} catch (e) {
+			repairError = e instanceof Error ? e.message : 'Failed to preview repairs';
+		} finally {
+			loadingRepair = false;
+		}
+	}
+
+	async function runRepairs() {
+		if (!selectedProjectId) return;
+
+		loadingRepair = true;
+		repairError = null;
+
+		try {
+			const response = await fetch(`/api/projects/${selectedProjectId}/repair`, {
+				method: 'POST'
+			});
+			if (!response.ok) {
+				const data = await response.json();
+				throw new Error(data.error || 'Failed to run repairs');
+			}
+			repairResult = await response.json();
+			repairPreview = null;
+		} catch (e) {
+			repairError = e instanceof Error ? e.message : 'Failed to run repairs';
+		} finally {
+			loadingRepair = false;
+		}
+	}
+
 	$effect(() => {
 		if (browser) {
 			loadGlobalServers();
 			loadSkillLevel();
 			loadClaudeStatus();
+			loadProjects();
 		}
 	});
 </script>
@@ -233,6 +300,118 @@
 								</button>
 							{/each}
 						</div>
+					{/if}
+				</section>
+
+				<section class="section">
+					<h2>
+						<Icon name="tool" size={18} />
+						Data Repair
+					</h2>
+					<p class="section-description">
+						Scan and repair common data issues in your beads database.
+					</p>
+
+					{#if projects.length === 0}
+						<p class="empty-message">No projects found. Add a project first.</p>
+					{:else}
+						<div class="repair-controls">
+							<select bind:value={selectedProjectId} disabled={loadingRepair}>
+								{#each projects as project}
+									<option value={project.id}>{project.name}</option>
+								{/each}
+							</select>
+
+							<div class="repair-buttons">
+								<button
+									class="btn-preview"
+									onclick={previewRepairs}
+									disabled={loadingRepair || !selectedProjectId}
+								>
+									{#if loadingRepair && !repairResult}
+										<Icon name="loader" size={16} />
+									{:else}
+										<Icon name="search" size={16} />
+									{/if}
+									Preview
+								</button>
+								<button
+									class="btn-repair"
+									onclick={runRepairs}
+									disabled={loadingRepair || !selectedProjectId}
+								>
+									{#if loadingRepair && repairResult}
+										<Icon name="loader" size={16} />
+									{:else}
+										<Icon name="zap" size={16} />
+									{/if}
+									Repair Data
+								</button>
+							</div>
+						</div>
+
+						{#if repairError}
+							<div class="repair-error">
+								<Icon name="alert-circle" size={16} />
+								{repairError}
+							</div>
+						{/if}
+
+						{#if repairPreview}
+							<div class="repair-results preview">
+								<h3>Preview ({repairPreview.repairs.length} repairs needed)</h3>
+								<p class="repair-summary">
+									Scanned {repairPreview.totalIssuesScanned} issues, {repairPreview.issuesRepaired} need repairs.
+								</p>
+								{#if repairPreview.repairs.length > 0}
+									<div class="repair-list">
+										{#each repairPreview.repairs.slice(0, 10) as repair}
+											<div class="repair-item">
+												<span class="repair-field">{repair.field}</span>
+												<span class="repair-id">{repair.issueId}</span>
+												<span class="repair-desc">{repair.description}</span>
+											</div>
+										{/each}
+										{#if repairPreview.repairs.length > 10}
+											<p class="more-items">...and {repairPreview.repairs.length - 10} more</p>
+										{/if}
+									</div>
+								{:else}
+									<p class="no-repairs">No repairs needed! Data looks good.</p>
+								{/if}
+							</div>
+						{/if}
+
+						{#if repairResult}
+							<div class="repair-results success">
+								<h3>Repair Complete</h3>
+								<p class="repair-summary">
+									Fixed {repairResult.repairs.length} issues across {repairResult.issuesRepaired} beads.
+								</p>
+								{#if repairResult.repairs.length > 0}
+									<div class="repair-list">
+										{#each repairResult.repairs.slice(0, 10) as repair}
+											<div class="repair-item">
+												<span class="repair-field">{repair.field}</span>
+												<span class="repair-id">{repair.issueId}</span>
+												<span class="repair-desc">{repair.description}</span>
+											</div>
+										{/each}
+										{#if repairResult.repairs.length > 10}
+											<p class="more-items">...and {repairResult.repairs.length - 10} more</p>
+										{/if}
+									</div>
+								{/if}
+								{#if repairResult.errors.length > 0}
+									<div class="repair-errors">
+										<h4>Errors:</h4>
+										{#each repairResult.errors as err}
+											<p class="error-item">{err}</p>
+										{/each}
+									</div>
+								{/if}
+							</div>
+						{/if}
 					{/if}
 				</section>
 
@@ -489,6 +668,192 @@
 		padding: 4px 8px;
 		border-radius: 4px;
 		border: 1px solid #eaeaea;
+	}
+
+	/* Data Repair Styles */
+	.empty-message {
+		color: #888888;
+		font-size: 14px;
+	}
+
+	.repair-controls {
+		display: flex;
+		gap: 12px;
+		align-items: center;
+		flex-wrap: wrap;
+	}
+
+	.repair-controls select {
+		flex: 1;
+		min-width: 200px;
+		padding: 10px 12px;
+		font-size: 14px;
+		border: 1px solid #e0e0e0;
+		border-radius: 8px;
+		background: #ffffff;
+		font-family: 'Figtree', sans-serif;
+	}
+
+	.repair-buttons {
+		display: flex;
+		gap: 8px;
+	}
+
+	.btn-preview,
+	.btn-repair {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 10px 16px;
+		border-radius: 8px;
+		font-size: 14px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		font-family: 'Figtree', sans-serif;
+	}
+
+	.btn-preview {
+		background: #ffffff;
+		border: 1px solid #e0e0e0;
+		color: #4b5563;
+	}
+
+	.btn-preview:hover:not(:disabled) {
+		background: #f5f5f5;
+	}
+
+	.btn-repair {
+		background: #2563eb;
+		border: 1px solid #2563eb;
+		color: #ffffff;
+	}
+
+	.btn-repair:hover:not(:disabled) {
+		background: #1d4ed8;
+	}
+
+	.btn-preview:disabled,
+	.btn-repair:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.repair-error {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-top: 16px;
+		padding: 12px;
+		background: #fef2f2;
+		border: 1px solid #fecaca;
+		border-radius: 8px;
+		color: #dc2626;
+		font-size: 14px;
+	}
+
+	.repair-results {
+		margin-top: 20px;
+		padding: 16px;
+		border-radius: 10px;
+	}
+
+	.repair-results.preview {
+		background: #f8fafc;
+		border: 1px solid #e2e8f0;
+	}
+
+	.repair-results.success {
+		background: #f0fdf4;
+		border: 1px solid #bbf7d0;
+	}
+
+	.repair-results h3 {
+		margin: 0 0 8px 0;
+		font-size: 15px;
+		font-weight: 600;
+		color: #1a1a1a;
+	}
+
+	.repair-summary {
+		margin: 0 0 12px 0;
+		font-size: 14px;
+		color: #666666;
+	}
+
+	.repair-list {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.repair-item {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 10px;
+		background: #ffffff;
+		border-radius: 6px;
+		font-size: 13px;
+	}
+
+	.repair-field {
+		font-weight: 500;
+		color: #4b5563;
+		min-width: 80px;
+	}
+
+	.repair-id {
+		font-family: monospace;
+		font-size: 12px;
+		color: #888888;
+		min-width: 100px;
+	}
+
+	.repair-desc {
+		color: #666666;
+		flex: 1;
+	}
+
+	.more-items {
+		margin: 8px 0 0 0;
+		font-size: 13px;
+		color: #888888;
+		font-style: italic;
+	}
+
+	.no-repairs {
+		margin: 0;
+		font-size: 14px;
+		color: #16a34a;
+	}
+
+	.repair-errors {
+		margin-top: 12px;
+		padding-top: 12px;
+		border-top: 1px solid #fecaca;
+	}
+
+	.repair-errors h4 {
+		margin: 0 0 8px 0;
+		font-size: 14px;
+		color: #dc2626;
+	}
+
+	.error-item {
+		margin: 4px 0;
+		font-size: 13px;
+		color: #dc2626;
+	}
+
+	@keyframes spin {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
+	}
+
+	.btn-preview:disabled :global(.icon),
+	.btn-repair:disabled :global(.icon) {
+		animation: spin 1s linear infinite;
 	}
 
 </style>

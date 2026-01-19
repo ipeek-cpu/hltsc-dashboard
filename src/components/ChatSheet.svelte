@@ -2,6 +2,8 @@
 	import { browser } from '$app/environment';
 	import type { Agent } from '$lib/types';
 	import type { SkillLevel } from '$lib/settings';
+	import type { SessionMetrics } from '$lib/session-metrics';
+	import { createSessionMetrics, updateMetrics, startBlock } from '$lib/session-metrics';
 	import { getAgentColor, getModelStyle } from '$lib/agents';
 	import Icon from './Icon.svelte';
 	import ChatMessage from './ChatMessage.svelte';
@@ -12,6 +14,7 @@
 	import ClaudeQuestionPanel, { type Question } from './ClaudeQuestionPanel.svelte';
 	import ToolDisplay from './ToolDisplay.svelte';
 	import GlobalDropZone from './GlobalDropZone.svelte';
+	import SessionMetricsBar from './SessionMetricsBar.svelte';
 
 	interface InitStreamMessage {
 		type: 'text' | 'tool_use' | 'tool_result' | 'status' | 'init' | 'done' | 'error' | 'auth_expired';
@@ -153,6 +156,14 @@
 	}
 	let attachedFiles = $state<AttachedFile[]>([]);
 
+	// Session prompts state
+	let hasEndPrompt = $state(false);
+	let endPromptContent = $state<string | null>(null);
+
+	// Session metrics state
+	let sessionMetrics = $state<SessionMetrics | null>(null);
+	let showMetrics = $state(true);
+
 	// Resizable width
 	const MIN_WIDTH = 400;
 	const MAX_WIDTH = 900;
@@ -200,6 +211,8 @@
 				checkInitialization();
 				// Check skill level (will show modal if not set after init check completes)
 				checkSkillLevel();
+				// Check for session prompts
+				checkSessionPrompts();
 			}
 		} else if (visible && !embedded) {
 			animating = false;
@@ -366,6 +379,7 @@
 		if (!preserveHistory) {
 			messages = [];
 			clearChatHistory();
+			sessionMetrics = null;
 		}
 		isStreaming = false;
 		isConnected = false;
@@ -439,6 +453,35 @@
 			userSkillLevel = null;
 		}
 		skillLevelChecked = true;
+	}
+
+	async function checkSessionPrompts() {
+		try {
+			const response = await fetch(`/api/projects/${projectId}/prompts`);
+			if (response.ok) {
+				const data = await response.json();
+				if (data.endPrompt && data.endPrompt.frontmatter?.enabled !== false) {
+					hasEndPrompt = true;
+					endPromptContent = data.endPrompt.content;
+				} else {
+					hasEndPrompt = false;
+					endPromptContent = null;
+				}
+			}
+		} catch (err) {
+			console.error('Error checking session prompts:', err);
+			hasEndPrompt = false;
+		}
+	}
+
+	function applyEndPrompt() {
+		if (!endPromptContent) return;
+
+		// Send the end prompt as a user message
+		const wrapUpMessage = `Please help me wrap up this session:
+
+${endPromptContent}`;
+		sendMessage(wrapUpMessage);
 	}
 
 	// Show skill level modal when project is initialized and skill level not set
@@ -587,6 +630,10 @@
 			const data = await response.json();
 			sessionId = data.sessionId;
 
+			// Initialize session metrics
+			sessionMetrics = createSessionMetrics(selectedModel);
+			sessionMetrics = startBlock(sessionMetrics);
+
 			// With print mode, Claude is always ready immediately (no startup wait)
 			claudeReady = true;
 
@@ -726,6 +773,16 @@
 						doneMsg.totalTokens = data.totalTokens;
 						doneMsg.costUsd = data.costUsd;
 						doneMsg.durationMs = data.durationMs;
+
+						// Update session metrics
+						if (sessionMetrics) {
+							sessionMetrics = updateMetrics(sessionMetrics, {
+								inputTokens: data.inputTokens,
+								outputTokens: data.outputTokens,
+								costUsd: data.costUsd,
+								durationMs: data.durationMs
+							});
+						}
 					}
 					messages = [...messages];
 				}
@@ -1080,6 +1137,17 @@
 					</div>
 
 					<div class="header-right">
+						{#if isInitialized && messages.length > 0 && hasEndPrompt}
+							<button
+								class="wrap-up-btn"
+								onclick={applyEndPrompt}
+								title="Wrap up session and save context"
+								disabled={isStreaming}
+							>
+								<Icon name="flag" size={16} />
+								Wrap Up
+							</button>
+						{/if}
 						{#if isInitialized && messages.length > 0}
 							<button class="new-chat-btn" onclick={startNewChat} title="Start new chat">
 								<Icon name="plus" size={16} />
@@ -1100,6 +1168,13 @@
 					</div>
 				</div>
 			</div>
+
+			{#if isInitialized && sessionMetrics && showMetrics}
+				<SessionMetricsBar
+					metrics={sessionMetrics}
+					onNewSession={startNewChat}
+				/>
+			{/if}
 
 			{#if checkingInit}
 				<!-- Loading state while checking initialization -->
@@ -1578,6 +1653,32 @@
 	.new-chat-btn:hover {
 		background: #f9fafb;
 		border-color: #d1d5db;
+	}
+
+	.wrap-up-btn {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 12px;
+		border: 1px solid #fcd34d;
+		background: #fef3c7;
+		border-radius: 6px;
+		font-size: 13px;
+		font-weight: 500;
+		color: #92400e;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		font-family: 'Figtree', sans-serif;
+	}
+
+	.wrap-up-btn:hover:not(:disabled) {
+		background: #fde68a;
+		border-color: #fbbf24;
+	}
+
+	.wrap-up-btn:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
 	.close-btn {

@@ -1,0 +1,238 @@
+HLSTC Dashboard Enhancement - Overview for Review
+
+  What is Beads?
+
+  Beads is a distributed, git-backed issue tracker designed specifically for AI agents. Unlike traditional issue trackers (Jira, Linear, GitHub Issues),
+   Beads stores issues in a SQLite database that lives alongside your code (.beads/beads.db). This makes it:
+
+  - Git-native: Issues travel with your repo, branches can have different issue states
+  - AI-friendly: Structured data that agents can read/write programmatically
+  - Offline-capable: No external service dependency
+
+  What is Claude Code?
+
+  Claude Code is Anthropic's CLI tool that lets Claude interact with your codebase - reading files, running commands, making edits. It's the "hands"
+  that let Claude actually do development work.
+
+  The Relationship: Beads + Claude Code
+
+  The vision is an agentic development workflow:
+
+  ┌─────────────────────────────────────────────────────────────┐
+  │                    Human Developer                           │
+  │                         │                                    │
+  │                    Creates issues                            │
+  │                    Sets priorities                           │
+  │                    Reviews work                              │
+  │                         ▼                                    │
+  │  ┌─────────────────────────────────────────────────────┐    │
+  │  │              Beads Dashboard (this app)              │    │
+  │  │                                                      │    │
+  │  │   • Visualizes issues on Kanban board               │    │
+  │  │   • Manages AI agents (planner, executor, reviewer) │    │
+  │  │   • Orchestrates Claude Code sessions               │    │
+  │  │   • Tracks progress and history                     │    │
+  │  └─────────────────────────────────────────────────────┘    │
+  │                         │                                    │
+  │              Spawns Claude Code sessions                     │
+  │                         ▼                                    │
+  │  ┌─────────────────────────────────────────────────────┐    │
+  │  │                  Claude Code CLI                     │    │
+  │  │                                                      │    │
+  │  │   • Reads/writes code files                         │    │
+  │  │   • Runs tests, builds, linters                     │    │
+  │  │   • Creates branches and commits                    │    │
+  │  │   • Updates Beads issues as work progresses         │    │
+  │  └─────────────────────────────────────────────────────┘    │
+  └─────────────────────────────────────────────────────────────┘
+
+  The key insight: Claude Code is powerful but stateless - each conversation starts fresh. The dashboard provides the persistent layer: which issues
+  exist, what's blocked, what's been tried before, what context to inject.
+
+  ---
+  Problems We're Solving
+
+  Problem 1: Context Loss Between Sessions
+
+  Every time you start a new Claude conversation, you lose context. You have to re-explain the project, re-state known issues, re-describe what you were
+   working on.
+
+  Problem 2: Agents Fixing the Wrong Things
+
+  Claude sees a failing CI test and tries to fix it - but maybe that failure is known and being tracked separately. Without context injection, Claude
+  wastes time on distractions.
+
+  Problem 3: No Visibility into Agent Work
+
+  When agents are working autonomously, you need to see what they're doing, what issues they've claimed, and their progress.
+
+  Problem 4: Navigating Large Backlogs
+
+  With many beads (issues), you need filtering, sorting, and quick navigation - not just a Kanban board.
+
+  Problem 5: Agent-Specific Workflows
+
+  Different agent types (planners vs executors) need different views optimized for their workflow.
+
+  ---
+  The 7 Phases Explained
+
+  Phase 1: Session Prompts System
+
+  What it does: Customizable markdown prompts that auto-inject at session start/end.
+
+  Storage: .claude/prompts/session-start.md, session-end.md
+
+  UI: Settings tab → Prompt Editor
+
+  Example start prompt:
+  # Session Start
+  Before we begin:
+  1. Check `bd ready` for unblocked issues
+  2. Review any known issues below
+  3. Do NOT fix CI failures unless explicitly asked
+
+  Why it matters: Ensures every Claude session starts with the right instructions and ends with proper knowledge preservation.
+
+  ---
+  Phase 2: Session Context Persistence
+
+  What it does: Tracks known issues, blockers, and session summaries that persist across conversations.
+
+  New data structures:
+  interface KnownIssue {
+    id: string;
+    type: 'ci_failure' | 'blocker' | 'bug' | 'note';
+    title: string;
+    description: string;
+    status: 'active' | 'resolved';
+  }
+
+  UI: Settings tab → Known Issues Panel
+
+  How it works: Active known issues are injected into the start prompt:
+  ## Known Issues (Do Not Fix Unless Instructed)
+  - [CI] Test suite X failing - tracked in issue #abc
+  - [Blocker] API rate limit - wait before retrying
+
+  Why it matters: Prevents Claude from going down rabbit holes on known problems.
+
+  ---
+  Phase 3: Session Metrics Display
+
+  What it does: Real-time metrics bar in the chat interface showing:
+  - Model being used (Opus, Sonnet, etc.)
+  - Session duration
+  - Token usage (input/output)
+  - Estimated cost
+  - Context usage % with warnings
+
+  UI: Metrics bar above chat messages
+
+  Why it matters: Visibility into resource usage, warnings before context window fills up (triggers summarization).
+
+  ---
+  Phase 4: History Tab Redesign
+
+  What it does: Dual-view history tab:
+  1. Git Changes - Existing version history view (commits, diffs)
+  2. Sessions - New session history showing past Claude conversations with summaries
+
+  UI: History tab with sub-tabs for Git vs Sessions
+
+  Why it matters: See what work was done, when, by which agent, with what outcome.
+
+  ---
+  Phase 5: Beads List View
+
+  What it does: Table/list view of all issues with:
+  - Sortable columns (title, status, priority, assignee, updated)
+  - Filtering by status, priority, assignee, type
+  - Search
+  - Pagination
+  - Click stat badges (e.g., "48 Open") to jump directly to filtered view
+
+  UI: Click any stat in header → Opens list view overlay with split panel (list + detail)
+
+  Why it matters: Kanban is great for workflow visualization, but sometimes you need to find/filter/sort across many issues quickly.
+
+  ---
+  Phase 6: Agent Assignment Enhancement
+
+  What it does:
+  - Improved drag-drop assignment (visual feedback, confirmation)
+  - Assignee dropdown in issue detail sheet
+  - API support for updating assignee field
+
+  UI: Issue detail sheet → Assignee dropdown
+
+  Why it matters: Clear ownership of who (which agent) is responsible for which issue.
+
+  ---
+  Phase 7: Planning/Execution Mode Screens
+
+  What it does: Agent-specific workflow views:
+
+  Planning View (for Planner agents):
+  - Shows issues needing planning (open status)
+  - Shows issues ready for execution (ready status)
+  - Shows epics for high-level tracking
+  - Agent selector filtered to planner-type agents
+  - Chat button to start planning conversation
+
+  Execution View (for Executor agents):
+  - Shows issues assigned to selected agent
+  - Three columns: Ready to Start, In Progress, In Review
+  - Start/Stop/Resume task buttons
+  - Summary cards with counts
+  - Branch names and PR links visible
+
+  UI: New "Planning" and "Execution" tabs in main navigation
+
+  Why it matters: Different agent roles need different views. A planner needs to see what needs breakdown; an executor needs to see their assigned work
+  queue.
+
+  ---
+  Architecture Summary
+
+  ┌─────────────────────────────────────────────────────────────┐
+  │                     Beads Dashboard                          │
+  ├─────────────────────────────────────────────────────────────┤
+  │  Frontend (SvelteKit 5)                                      │
+  │  ├── Kanban Board View                                       │
+  │  ├── Epics View                                              │
+  │  ├── Agents View                                             │
+  │  ├── Planning View (NEW)                                     │
+  │  ├── Execution View (NEW)                                    │
+  │  ├── History View (enhanced)                                 │
+  │  ├── Settings (prompts, known issues)                        │
+  │  ├── Chat Sheet (Claude Code interface)                      │
+  │  └── List View Overlay (NEW)                                 │
+  ├─────────────────────────────────────────────────────────────┤
+  │  Backend (SvelteKit API routes)                              │
+  │  ├── /api/projects/[id]/stream - SSE for live updates       │
+  │  ├── /api/projects/[id]/prompts - Session prompts CRUD      │
+  │  ├── /api/projects/[id]/known-issues - Known issues CRUD    │
+  │  ├── /api/projects/[id]/sessions - Session history          │
+  │  ├── /api/projects/[id]/chat - Claude Code sessions         │
+  │  └── /api/projects/[id]/issues - Beads issue CRUD           │
+  ├─────────────────────────────────────────────────────────────┤
+  │  Data Layer                                                  │
+  │  ├── Beads SQLite (.beads/beads.db) - Issues, events        │
+  │  ├── Dashboard SQLite - Sessions, metrics, known issues     │
+  │  └── File System - Prompts (.claude/prompts/*.md)           │
+  ├─────────────────────────────────────────────────────────────┤
+  │  External                                                    │
+  │  └── Claude Code CLI - Spawned for actual work              │
+  └─────────────────────────────────────────────────────────────┘
+
+  ---
+  Potential Areas for Improvement
+
+  1. Auto-summarization: Automatically generate session summaries using Claude when ending a session
+  2. Context window management: Smarter detection of when to suggest starting fresh vs. continuing
+  3. Agent handoffs: Planner creates issues → Executor picks up → Reviewer validates (workflow automation)
+  4. Metrics aggregation: Dashboard-wide view of agent productivity, cost trends, success rates
+  5. Conflict detection: When multiple agents might be working on related issues
+  6. Template issues: Pre-defined issue templates for common patterns
+  7. Integration with external trackers: Sync with GitHub Issues, Linear, etc.

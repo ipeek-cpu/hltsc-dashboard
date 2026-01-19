@@ -5,8 +5,11 @@ import {
 	getIssueById,
 	updateIssue,
 	getAllDescendantIssues,
-	deleteIssueWithDescendants
+	deleteIssueWithDescendants,
+	notifyDbChange,
+	refreshProjectDb
 } from '$lib/project-db';
+import { validateTransition, type BeadStatus, type TransitionData } from '$lib/bead-lifecycle';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ params }) => {
@@ -30,7 +33,7 @@ export const GET: RequestHandler = async ({ params }) => {
 	}
 };
 
-// Update issue title and/or description
+// Update issue title, description, status, and lifecycle fields
 export const PATCH: RequestHandler = async ({ params, request }) => {
 	const project = getProjectById(params.id);
 
@@ -40,12 +43,19 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 
 	try {
 		const body = await request.json();
-		const { title, description } = body;
-
-		// Validate at least one field is provided
-		if (title === undefined && description === undefined) {
-			return json({ error: 'No fields to update' }, { status: 400 });
-		}
+		const {
+			title,
+			description,
+			status,
+			assignee,
+			branch_name,
+			agent_id,
+			commit_hash,
+			execution_log,
+			pr_url,
+			pr_status,
+			ci_status
+		} = body;
 
 		// Check issue exists
 		const issue = getIssueById(project.path, params.issueId);
@@ -53,11 +63,72 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			return json({ error: 'Issue not found' }, { status: 404 });
 		}
 
-		const success = updateIssue(project.path, params.issueId, { title, description });
+		// If status is being changed, validate the transition
+		if (status !== undefined && status !== issue.status) {
+			const transitionData: TransitionData = {
+				branch_name,
+				agent_id,
+				commit_hash,
+				execution_log,
+				pr_url
+			};
+
+			const validation = validateTransition(
+				issue.status as BeadStatus,
+				status as BeadStatus,
+				transitionData
+			);
+
+			if (!validation.valid) {
+				return json(
+					{
+						error: validation.error,
+						missingFields: validation.missingFields
+					},
+					{ status: 400 }
+				);
+			}
+		}
+
+		// Validate at least one field is provided
+		const hasUpdates =
+			title !== undefined ||
+			description !== undefined ||
+			status !== undefined ||
+			assignee !== undefined ||
+			branch_name !== undefined ||
+			agent_id !== undefined ||
+			commit_hash !== undefined ||
+			execution_log !== undefined ||
+			pr_url !== undefined ||
+			pr_status !== undefined ||
+			ci_status !== undefined;
+
+		if (!hasUpdates) {
+			return json({ error: 'No fields to update' }, { status: 400 });
+		}
+
+		const success = updateIssue(project.path, params.issueId, {
+			title,
+			description,
+			status,
+			assignee,
+			branch_name,
+			agent_id,
+			commit_hash,
+			execution_log,
+			pr_url,
+			pr_status,
+			ci_status
+		});
 
 		if (!success) {
 			return json({ error: 'Failed to update issue' }, { status: 500 });
 		}
+
+		// Notify that we changed the DB and refresh connection so stream picks up change
+		notifyDbChange(project.path);
+		refreshProjectDb(project.path);
 
 		// Return updated issue
 		const updatedIssue = getIssueWithDetails(project.path, params.issueId);

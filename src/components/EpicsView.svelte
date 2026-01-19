@@ -20,6 +20,41 @@
 
   let epicChildren = $state<Record<string, Issue[]>>({});
   let loadingEpics = $state<Set<string>>(new Set());
+  let initialLoadDone = $state(false);
+
+  // Fetch children for all epics on initial load
+  $effect(() => {
+    if (initialLoadDone || epics.length === 0) return;
+    initialLoadDone = true;
+
+    const pathParts = window.location.pathname.split('/');
+    const projectId = pathParts[pathParts.indexOf('projects') + 1];
+
+    // Fetch children for all epics in parallel
+    Promise.all(
+      epics.map(async (epic) => {
+        if (epicChildren[epic.id]) return; // Already loaded
+        try {
+          const response = await fetch(`/api/projects/${projectId}/issues/${epic.id}`);
+          if (response.ok) {
+            const epicWithDetails = await response.json();
+            return { id: epic.id, children: epicWithDetails.children || [] };
+          }
+        } catch (err) {
+          console.error(`Failed to fetch children for epic ${epic.id}:`, err);
+        }
+        return null;
+      })
+    ).then((results) => {
+      const newChildren: Record<string, Issue[]> = { ...epicChildren };
+      for (const result of results) {
+        if (result) {
+          newChildren[result.id] = result.children;
+        }
+      }
+      epicChildren = newChildren;
+    });
+  });
 
   async function toggleEpic(epicId: string) {
     if (expandedEpics.has(epicId)) {

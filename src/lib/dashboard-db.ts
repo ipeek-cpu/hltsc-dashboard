@@ -65,6 +65,7 @@ export interface Project {
 export interface ProjectWithStats extends Project {
 	open_count: number;
 	in_progress_count: number;
+	in_review_count: number;
 	total_count: number;
 	beads_version: string | null;
 	beads_outdated: boolean;
@@ -136,6 +137,7 @@ export function validateProjectPath(projectPath: string): {
 	valid: boolean;
 	error?: string;
 	needsInit?: boolean;
+	hasBeadsDir?: boolean;
 } {
 	// Check if path exists
 	if (!fs.existsSync(projectPath)) {
@@ -148,14 +150,20 @@ export function validateProjectPath(projectPath: string): {
 		return { valid: false, error: 'Path is not a directory' };
 	}
 
+	// Check if .beads directory exists
+	const beadsDir = path.join(projectPath, '.beads');
+	const hasBeadsDir = fs.existsSync(beadsDir);
+
 	// Check if .beads/beads.db exists
 	const beadsDbPath = path.join(projectPath, '.beads', 'beads.db');
 	if (!fs.existsSync(beadsDbPath)) {
 		// Return needsInit flag so the UI can offer to initialize beads
+		// Also return hasBeadsDir so UI can auto-repair if .beads exists
 		return {
 			valid: false,
 			error: 'No beads database found in this directory',
-			needsInit: true
+			needsInit: true,
+			hasBeadsDir
 		};
 	}
 

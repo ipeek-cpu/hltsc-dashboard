@@ -17,3 +17,14 @@ production_release/.r2-credentials
 production_release
 .apple-credentials
 release/
+
+# Added entries
+.codegraph/
+.beads/
+DerivedData/
+*.log
+.idea/
+dist/
+out/
+.env
+.env.local

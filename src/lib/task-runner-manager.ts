@@ -16,6 +16,7 @@ import { getProjectById } from './dashboard-db';
 import { getIssueWithDetails, getChildIssuesSorted, getIssueById, updateIssue, refreshProjectDb, notifyDbChange } from './project-db';
 import { buildTaskPrompt, detectCompletionSignal, buildMessagePrompt } from './task-prompt-builder';
 import { parseFrontmatter } from './agents';
+import { emitActivity } from './agent-activity-store';
 import type { TaskRun, TaskRunMode, Issue, IssueWithDetails } from './types';
 import fs from 'fs';
 import path from 'path';
@@ -255,12 +256,23 @@ function handleClaudeOutput(runId: string, chunk: ClaudeOutputChunk): void {
 	const run = taskRunnerStore.get(runId);
 	if (!run) return;
 
+	// Get agent info for activity events
+	const agentId = run.claudeSessionId || 'claude';
+
 	switch (chunk.type) {
 		case 'text':
 			if (chunk.content) {
 				taskRunnerStore.addEvent(runId, {
 					type: 'output',
 					content: chunk.content
+				});
+
+				// Emit activity for text output
+				emitActivity('message', run.projectId, agentId, {
+					issueId: run.issueId,
+					issueTitle: run.issueTitle,
+					runId,
+					content: chunk.content.slice(0, 200) // Truncate for activity feed
 				});
 
 				// Check for completion signals
@@ -277,12 +289,29 @@ function handleClaudeOutput(runId: string, chunk: ClaudeOutputChunk): void {
 				toolName: chunk.toolName,
 				toolInput: chunk.toolInput
 			});
+
+			// Emit activity for tool use
+			emitActivity('tool_use', run.projectId, agentId, {
+				issueId: run.issueId,
+				issueTitle: run.issueTitle,
+				runId,
+				toolName: chunk.toolName,
+				toolInput: chunk.toolInput
+			});
 			break;
 
 		case 'tool_result':
 			taskRunnerStore.addEvent(runId, {
 				type: 'tool_result',
 				toolResult: chunk.toolResult
+			});
+
+			// Emit activity for tool result
+			emitActivity('tool_result', run.projectId, agentId, {
+				issueId: run.issueId,
+				issueTitle: run.issueTitle,
+				runId,
+				toolName: chunk.toolName
 			});
 			break;
 
@@ -299,7 +328,7 @@ function handleClaudeOutput(runId: string, chunk: ClaudeOutputChunk): void {
 				type: 'error',
 				content: 'Claude authentication expired. Please log in again.'
 			});
-			taskRunnerStore.updateRun(runId, { status: 'failed' });
+			taskRunnerStore.updateStatus(runId, 'failed');
 			// Clean up the Claude session
 			const runForAuth = taskRunnerStore.get(runId);
 			if (runForAuth?.claudeSessionId) {
@@ -325,9 +354,19 @@ function handleCompletionSignal(
 	const run = taskRunnerStore.get(runId);
 	if (!run) return;
 
+	const agentId = run.claudeSessionId || 'claude';
+
 	taskRunnerStore.addEvent(runId, {
 		type: 'completion_signal',
 		content: `${signalType}: ${message || ''}`
+	});
+
+	// Emit activity for the signal type
+	emitActivity(signalType, run.projectId, agentId, {
+		issueId: run.issueId,
+		issueTitle: run.issueTitle,
+		runId,
+		content: message
 	});
 
 	switch (signalType) {

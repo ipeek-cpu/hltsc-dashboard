@@ -105,6 +105,10 @@
 				<span class="stat-value">{project.in_progress_count}</span>
 				<span class="stat-label">In Progress</span>
 			</div>
+			<div class="stat in-review">
+				<span class="stat-value">{project.in_review_count}</span>
+				<span class="stat-label">In Review</span>
+			</div>
 			<div class="stat total">
 				<span class="stat-value">{project.total_count}</span>
 				<span class="stat-label">Total</span>
@@ -253,6 +257,10 @@
 
 	.stat.in-progress .stat-value {
 		color: #f59e0b;
+	}
+
+	.stat.in-review .stat-value {
+		color: #8b5cf6;
 	}
 
 	.stat.total .stat-value {

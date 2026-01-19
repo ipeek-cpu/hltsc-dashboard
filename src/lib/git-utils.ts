@@ -462,3 +462,195 @@ export function getCommitsToUndo(projectPath: string, targetCommitHash: string):
 
 	return commitsToUndo;
 }
+
+// ============== PR/CI STATUS INTEGRATION ==============
+
+export type PRStatus = 'open' | 'merged' | 'closed' | 'draft' | 'unknown';
+export type CIStatus = 'pending' | 'success' | 'failure' | 'unknown';
+
+export interface PRInfo {
+	number: number;
+	title: string;
+	url: string;
+	status: PRStatus;
+	isDraft: boolean;
+	createdAt: string;
+	updatedAt: string;
+	author: string;
+}
+
+export interface CIInfo {
+	status: CIStatus;
+	checks: Array<{
+		name: string;
+		status: 'pending' | 'success' | 'failure';
+		conclusion?: string;
+	}>;
+	summary: string;
+}
+
+/**
+ * Get PR status for a branch using GitHub CLI
+ */
+export function getPRStatus(projectPath: string, branchName: string): PRInfo | null {
+	try {
+		// Use gh pr view to get PR info for the branch
+		const result = spawnSync(
+			'gh',
+			['pr', 'view', branchName, '--json', 'number,title,url,state,isDraft,createdAt,updatedAt,author'],
+			{
+				cwd: projectPath,
+				encoding: 'utf-8',
+				timeout: 15000,
+				stdio: ['pipe', 'pipe', 'pipe']
+			}
+		);
+
+		if (result.status !== 0) {
+			// No PR found for this branch
+			return null;
+		}
+
+		const data = JSON.parse(result.stdout);
+
+		let status: PRStatus = 'unknown';
+		if (data.state === 'OPEN') {
+			status = data.isDraft ? 'draft' : 'open';
+		} else if (data.state === 'MERGED') {
+			status = 'merged';
+		} else if (data.state === 'CLOSED') {
+			status = 'closed';
+		}
+
+		return {
+			number: data.number,
+			title: data.title,
+			url: data.url,
+			status,
+			isDraft: data.isDraft,
+			createdAt: data.createdAt,
+			updatedAt: data.updatedAt,
+			author: data.author?.login || 'unknown'
+		};
+	} catch (error) {
+		console.error('[git-utils] Failed to get PR status:', error);
+		return null;
+	}
+}
+
+/**
+ * Get CI/check status for a branch using GitHub CLI
+ */
+export function getCIStatus(projectPath: string, branchName: string): CIInfo {
+	try {
+		// Use gh pr checks to get CI status
+		const result = spawnSync(
+			'gh',
+			['pr', 'checks', branchName, '--json', 'name,state,conclusion'],
+			{
+				cwd: projectPath,
+				encoding: 'utf-8',
+				timeout: 15000,
+				stdio: ['pipe', 'pipe', 'pipe']
+			}
+		);
+
+		if (result.status !== 0) {
+			return {
+				status: 'unknown',
+				checks: [],
+				summary: 'No checks available'
+			};
+		}
+
+		const checks = JSON.parse(result.stdout);
+
+		if (!Array.isArray(checks) || checks.length === 0) {
+			return {
+				status: 'unknown',
+				checks: [],
+				summary: 'No checks configured'
+			};
+		}
+
+		const mappedChecks = checks.map((check: { name: string; state: string; conclusion?: string }) => {
+			let status: 'pending' | 'success' | 'failure' = 'pending';
+
+			if (check.state === 'COMPLETED') {
+				status = check.conclusion === 'SUCCESS' ? 'success' : 'failure';
+			} else if (check.state === 'IN_PROGRESS' || check.state === 'QUEUED') {
+				status = 'pending';
+			}
+
+			return {
+				name: check.name,
+				status,
+				conclusion: check.conclusion
+			};
+		});
+
+		// Determine overall status
+		const hasPending = mappedChecks.some((c: { status: string }) => c.status === 'pending');
+		const hasFailure = mappedChecks.some((c: { status: string }) => c.status === 'failure');
+		const allSuccess = mappedChecks.every((c: { status: string }) => c.status === 'success');
+
+		let overallStatus: CIStatus = 'unknown';
+		let summary = '';
+
+		if (hasPending) {
+			overallStatus = 'pending';
+			const pendingCount = mappedChecks.filter((c: { status: string }) => c.status === 'pending').length;
+			summary = `${pendingCount} check(s) running`;
+		} else if (hasFailure) {
+			overallStatus = 'failure';
+			const failedCount = mappedChecks.filter((c: { status: string }) => c.status === 'failure').length;
+			summary = `${failedCount} check(s) failed`;
+		} else if (allSuccess) {
+			overallStatus = 'success';
+			summary = `All ${mappedChecks.length} check(s) passed`;
+		}
+
+		return {
+			status: overallStatus,
+			checks: mappedChecks,
+			summary
+		};
+	} catch (error) {
+		console.error('[git-utils] Failed to get CI status:', error);
+		return {
+			status: 'unknown',
+			checks: [],
+			summary: 'Failed to fetch checks'
+		};
+	}
+}
+
+/**
+ * Get combined git status for a bead (branch + PR + CI)
+ */
+export function getBeadGitStatus(
+	projectPath: string,
+	branchName: string
+): {
+	branch: { name: string; exists: boolean };
+	pr: PRInfo | null;
+	ci: CIInfo;
+} {
+	// Check if branch exists
+	let branchExists = false;
+	try {
+		execGit(projectPath, ['rev-parse', '--verify', branchName]);
+		branchExists = true;
+	} catch {
+		branchExists = false;
+	}
+
+	const pr = branchExists ? getPRStatus(projectPath, branchName) : null;
+	const ci = pr ? getCIStatus(projectPath, branchName) : { status: 'unknown' as CIStatus, checks: [], summary: '' };
+
+	return {
+		branch: { name: branchName, exists: branchExists },
+		pr,
+		ci
+	};
+}

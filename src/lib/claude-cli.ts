@@ -7,6 +7,8 @@ import { getClaudePath as getClaudePathFromSettings, getUserSkillLevel } from '.
 import { getStoredToken, logout } from './claude-auth';
 import { generateProjectInstructions } from './beads-instructions';
 import { getBdPrimeContext } from './beads-cli';
+import { getStartPromptContent } from './prompts';
+import { getSessionContextForInjection } from './session-context';
 
 // Path to bundled Node.js binary
 const BUNDLED_NODE_DIR = path.join(os.homedir(), '.beads-dashboard', 'bin');
@@ -272,10 +274,43 @@ export function sendMessage(
 
 		const projectInstructions = generateProjectInstructions(skillLevel, bdPrimeContext);
 
+		// Get session start prompt if configured
+		let sessionStartPrompt = '';
+		try {
+			const startPromptContent = getStartPromptContent(session.projectPath);
+			if (startPromptContent) {
+				sessionStartPrompt = `
+<session-start-instructions>
+${startPromptContent}
+</session-start-instructions>
+
+`;
+				logDebug('Session start prompt loaded');
+			}
+		} catch (err) {
+			logDebug(`Error loading session start prompt: ${err}`);
+		}
+
+		// Get session context (known issues, previous session summary)
+		let sessionContextSection = '';
+		try {
+			const contextContent = getSessionContextForInjection(session.projectPath);
+			if (contextContent) {
+				sessionContextSection = `
+<session-context>
+${contextContent}
+</session-context>
+
+`;
+				logDebug('Session context loaded');
+			}
+		} catch (err) {
+			logDebug(`Error loading session context: ${err}`);
+		}
+
 		if (session.agentPrompt) {
 			fullPrompt = `${projectInstructions}
-
-<agent-context>
+${sessionContextSection}${sessionStartPrompt}<agent-context>
 You are operating as a specialized agent with the following profile:
 
 ${session.agentPrompt}
@@ -286,8 +321,7 @@ Please respond according to this agent's specialization and guidelines.
 ${message}`;
 		} else {
 			fullPrompt = `${projectInstructions}
-
-${message}`;
+${sessionContextSection}${sessionStartPrompt}${message}`;
 		}
 	}
 

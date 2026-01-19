@@ -20,6 +20,14 @@ export interface Issue {
 	updated_at: string;
 	closed_at: string | null;
 	close_reason: string;
+	// Lifecycle fields for bead workflow enforcement
+	branch_name?: string;
+	agent_id?: string;
+	commit_hash?: string;
+	execution_log?: string;
+	pr_url?: string;
+	pr_status?: 'open' | 'merged' | 'closed';
+	ci_status?: 'pending' | 'success' | 'failure';
 }
 
 export interface Event {
@@ -225,11 +233,13 @@ export function getIssueStats(projectPath: string): IssueStats[] {
 export function getProjectCounts(projectPath: string): {
 	open: number;
 	in_progress: number;
+	in_review: number;
 	total: number;
 } {
 	const stats = getIssueStats(projectPath);
 	let open = 0;
 	let in_progress = 0;
+	let in_review = 0;
 	let total = 0;
 
 	for (const stat of stats) {
@@ -238,10 +248,12 @@ export function getProjectCounts(projectPath: string): {
 			open = stat.count;
 		} else if (stat.status === 'in_progress') {
 			in_progress = stat.count;
+		} else if (stat.status === 'in_review') {
+			in_review = stat.count;
 		}
 	}
 
-	return { open, in_progress, total };
+	return { open, in_progress, in_review, total };
 }
 
 // Get issues that block this issue (this issue depends on them)
@@ -488,11 +500,25 @@ export function getIssueWithDetails(projectPath: string, issueId: string): Issue
 
 // ============== WRITE OPERATIONS ==============
 
-// Update issue fields (title, description, status)
+// Update issue fields (title, description, status, and lifecycle fields)
+export interface IssueUpdate {
+	title?: string;
+	description?: string;
+	status?: string;
+	assignee?: string | null;
+	branch_name?: string;
+	agent_id?: string;
+	commit_hash?: string;
+	execution_log?: string;
+	pr_url?: string;
+	pr_status?: 'open' | 'merged' | 'closed';
+	ci_status?: 'pending' | 'success' | 'failure';
+}
+
 export function updateIssue(
 	projectPath: string,
 	issueId: string,
-	updates: { title?: string; description?: string; status?: string }
+	updates: IssueUpdate
 ): boolean {
 	const db = getWritableProjectDb(projectPath);
 
@@ -512,6 +538,48 @@ export function updateIssue(
 	if (updates.status !== undefined) {
 		setClauses.push('status = ?');
 		values.push(updates.status);
+	}
+
+	if (updates.assignee !== undefined) {
+		setClauses.push('assignee = ?');
+		values.push(updates.assignee);
+	}
+
+	// Lifecycle fields - stored in notes as JSON for now (SQLite flexibility)
+	// In a future migration, these could become dedicated columns
+	if (updates.branch_name !== undefined) {
+		setClauses.push('branch_name = ?');
+		values.push(updates.branch_name);
+	}
+
+	if (updates.agent_id !== undefined) {
+		setClauses.push('agent_id = ?');
+		values.push(updates.agent_id);
+	}
+
+	if (updates.commit_hash !== undefined) {
+		setClauses.push('commit_hash = ?');
+		values.push(updates.commit_hash);
+	}
+
+	if (updates.execution_log !== undefined) {
+		setClauses.push('execution_log = ?');
+		values.push(updates.execution_log);
+	}
+
+	if (updates.pr_url !== undefined) {
+		setClauses.push('pr_url = ?');
+		values.push(updates.pr_url);
+	}
+
+	if (updates.pr_status !== undefined) {
+		setClauses.push('pr_status = ?');
+		values.push(updates.pr_status);
+	}
+
+	if (updates.ci_status !== undefined) {
+		setClauses.push('ci_status = ?');
+		values.push(updates.ci_status);
 	}
 
 	if (setClauses.length === 0) return false;

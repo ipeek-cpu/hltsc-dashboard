@@ -56,7 +56,8 @@ export const GET: RequestHandler = async ({ params }) => {
 		filepath: plannerPath,
 		frontmatter,
 		content,
-		rawContent
+		rawContent,
+		scope: 'project'
 	};
 
 	return json({ agent });
@@ -104,7 +105,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		filepath: plannerPath,
 		frontmatter,
 		content,
-		rawContent
+		rawContent,
+		scope: 'project'
 	};
 
 	return json({ agent, reset: true });

@@ -1,9 +1,11 @@
 <script lang="ts">
   import Icon from './Icon.svelte';
 
+  type TabType = 'board' | 'epics' | 'agents' | 'planning' | 'execution' | 'orchestration' | 'history' | 'settings';
+
   let { activeTab, ontabchange }: {
-    activeTab: 'board' | 'epics' | 'agents' | 'history';
-    ontabchange: (tab: 'board' | 'epics' | 'agents' | 'history') => void;
+    activeTab: TabType;
+    ontabchange: (tab: TabType) => void;
   } = $props();
 </script>
 
@@ -33,12 +35,44 @@
     Agents
   </button>
   <button
+    class="tab planning"
+    class:active={activeTab === 'planning'}
+    onclick={() => ontabchange('planning')}
+  >
+    <Icon name="clipboard" size={16} />
+    Planning
+  </button>
+  <button
+    class="tab execution"
+    class:active={activeTab === 'execution'}
+    onclick={() => ontabchange('execution')}
+  >
+    <Icon name="play-circle" size={16} />
+    Execution
+  </button>
+  <button
+    class="tab"
+    class:active={activeTab === 'orchestration'}
+    onclick={() => ontabchange('orchestration')}
+  >
+    <Icon name="grid" size={16} />
+    Orchestration
+  </button>
+  <button
     class="tab"
     class:active={activeTab === 'history'}
     onclick={() => ontabchange('history')}
   >
     <Icon name="clock" size={16} />
     History
+  </button>
+  <button
+    class="tab"
+    class:active={activeTab === 'settings'}
+    onclick={() => ontabchange('settings')}
+  >
+    <Icon name="settings" size={16} />
+    Settings
   </button>
 </div>
 
@@ -76,5 +110,21 @@
     background: #ffffff;
     color: #1a1a1a;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  }
+
+  .tab.planning:hover {
+    color: #7c3aed;
+  }
+
+  .tab.planning.active {
+    color: #7c3aed;
+  }
+
+  .tab.execution:hover {
+    color: #2563eb;
+  }
+
+  .tab.execution.active {
+    color: #2563eb;
   }
 </style>

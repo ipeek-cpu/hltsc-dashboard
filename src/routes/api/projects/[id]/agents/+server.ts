@@ -3,10 +3,49 @@ import { getProjectById } from '$lib/dashboard-db';
 import { parseFrontmatter, serializeAgent } from '$lib/agents';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import type { RequestHandler } from './$types';
 import type { Agent } from '$lib/types';
 
-// GET - List all agents
+/**
+ * Load agents from a directory
+ */
+function loadAgentsFromDir(
+	dir: string,
+	scope: 'global' | 'project'
+): Agent[] {
+	if (!fs.existsSync(dir)) {
+		return [];
+	}
+
+	const agents: Agent[] = [];
+	const files = fs.readdirSync(dir);
+
+	for (const file of files) {
+		if (!file.endsWith('.md')) continue;
+
+		const filepath = path.join(dir, file);
+		const stat = fs.statSync(filepath);
+
+		if (!stat.isFile()) continue;
+
+		const rawContent = fs.readFileSync(filepath, 'utf-8');
+		const { frontmatter, content } = parseFrontmatter(rawContent);
+
+		agents.push({
+			filename: file,
+			filepath,
+			frontmatter,
+			content,
+			rawContent,
+			scope
+		});
+	}
+
+	return agents;
+}
+
+// GET - List all agents (global + project, with project overriding global)
 export const GET: RequestHandler = async ({ params }) => {
 	const project = getProjectById(params.id);
 
@@ -14,43 +53,42 @@ export const GET: RequestHandler = async ({ params }) => {
 		return json({ error: 'Project not found' }, { status: 404 });
 	}
 
-	const agentsDir = path.join(project.path, '.claude', 'agents');
-
-	// Check if .claude/agents directory exists
-	if (!fs.existsSync(agentsDir)) {
-		return json({ agents: [], hasAgentsDir: false });
-	}
-
 	try {
-		const files = fs.readdirSync(agentsDir);
-		const agents: Agent[] = [];
+		// Load global agents from ~/.claude/agents/
+		const globalAgentsDir = path.join(os.homedir(), '.claude', 'agents');
+		const globalAgents = loadAgentsFromDir(globalAgentsDir, 'global');
 
-		for (const file of files) {
-			if (!file.endsWith('.md')) continue;
+		// Load project agents from .claude/agents/
+		const projectAgentsDir = path.join(project.path, '.claude', 'agents');
+		const projectAgents = loadAgentsFromDir(projectAgentsDir, 'project');
 
-			const filepath = path.join(agentsDir, file);
-			const stat = fs.statSync(filepath);
+		// Merge: project agents override global agents with same filename
+		const agentMap = new Map<string, Agent>();
 
-			if (!stat.isFile()) continue;
-
-			const rawContent = fs.readFileSync(filepath, 'utf-8');
-			const { frontmatter, content } = parseFrontmatter(rawContent);
-
-			agents.push({
-				filename: file,
-				filepath,
-				frontmatter,
-				content,
-				rawContent
-			});
+		// Add global agents first
+		for (const agent of globalAgents) {
+			agentMap.set(agent.filename, agent);
 		}
 
-		// Sort by name
+		// Override with project agents
+		for (const agent of projectAgents) {
+			agentMap.set(agent.filename, agent);
+		}
+
+		// Convert back to array and sort
+		const agents = Array.from(agentMap.values());
 		agents.sort((a, b) => a.frontmatter.name.localeCompare(b.frontmatter.name));
 
-		return json({ agents, hasAgentsDir: true });
+		return json({
+			agents,
+			hasAgentsDir: projectAgents.length > 0 || globalAgents.length > 0,
+			hasGlobalAgentsDir: fs.existsSync(globalAgentsDir),
+			hasProjectAgentsDir: fs.existsSync(projectAgentsDir),
+			globalCount: globalAgents.length,
+			projectCount: projectAgents.length
+		});
 	} catch (err) {
-		console.error('Error reading agents directory:', err);
+		console.error('Error reading agents directories:', err);
 		return json({ error: 'Failed to read agents' }, { status: 500 });
 	}
 };
@@ -108,7 +146,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 			filepath,
 			frontmatter,
 			content: parsedContent,
-			rawContent: content
+			rawContent: content,
+			scope: 'project' as const // New agents are always created in project scope
 		}, { status: 201 });
 	} catch (err) {
 		console.error('Error creating agent file:', err);

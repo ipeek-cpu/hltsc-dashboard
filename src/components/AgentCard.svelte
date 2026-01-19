@@ -3,16 +3,18 @@
   import { getAgentColor, getModelStyle } from '$lib/agents';
   import Icon from './Icon.svelte';
 
-  let { agent, taskCount = 0, isBuiltIn = false, onclick, ondelete }: {
+  let { agent, taskCount = 0, isBuiltIn = false, draggable = false, onclick, ondelete }: {
     agent: Agent;
     taskCount?: number;
     isBuiltIn?: boolean;
+    draggable?: boolean;
     onclick?: () => void;
     ondelete?: (agent: Agent) => void;
   } = $props();
 
   let color = $derived(getAgentColor(agent.frontmatter.color));
   let modelStyle = $derived(getModelStyle(agent.frontmatter.model));
+  let isDragging = $state(false);
 
   function truncate(str: string | undefined, len: number): string {
     if (!str) return '';
@@ -30,10 +32,42 @@
       onclick?.();
     }
   }
+
+  function handleDragStart(e: DragEvent) {
+    if (!draggable || !e.dataTransfer) return;
+
+    isDragging = true;
+    e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.setData('application/json', JSON.stringify({
+      type: 'agent',
+      agentFilename: agent.filename,
+      agentName: agent.frontmatter.name,
+      agentScope: agent.scope
+    }));
+
+    // Custom drag image (optional - browser default is fine too)
+    const dragEl = e.currentTarget as HTMLElement;
+    e.dataTransfer.setDragImage(dragEl, 20, 20);
+  }
+
+  function handleDragEnd() {
+    isDragging = false;
+  }
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="agent-card" onclick={onclick} onkeydown={handleKeydown} role="button" tabindex="0">
+<div
+  class="agent-card"
+  class:is-dragging={isDragging}
+  class:is-draggable={draggable}
+  draggable={draggable}
+  ondragstart={handleDragStart}
+  ondragend={handleDragEnd}
+  onclick={onclick}
+  onkeydown={handleKeydown}
+  role="button"
+  tabindex="0"
+>
   <div class="color-indicator" style="background: {color}"></div>
 
   <div class="card-content">
@@ -47,6 +81,15 @@
         style="background: {modelStyle.bg}; color: {modelStyle.color}"
       >
         {modelStyle.label}
+      </span>
+      <span
+        class="scope-badge"
+        class:scope-global={agent.scope === 'global'}
+        class:scope-project={agent.scope === 'project'}
+        title={agent.scope === 'global' ? 'Global agent (~/.claude/agents/)' : 'Project agent (.claude/agents/)'}
+      >
+        <Icon name={agent.scope === 'global' ? 'globe' : 'folder'} size={10} />
+        {agent.scope === 'global' ? 'Global' : 'Project'}
       </span>
     </div>
 
@@ -147,6 +190,27 @@
     letter-spacing: 0.3px;
   }
 
+  .scope-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    font-weight: 500;
+    padding: 2px 6px;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+
+  .scope-badge.scope-global {
+    background: #ecfdf5;
+    color: #059669;
+  }
+
+  .scope-badge.scope-project {
+    background: #f0f9ff;
+    color: #0284c7;
+  }
+
   .agent-description {
     margin: 0 0 10px 0;
     font-size: 13px;
@@ -218,5 +282,20 @@
 
   .agent-card:hover .chevron {
     color: #888888;
+  }
+
+  /* Draggable states */
+  .agent-card.is-draggable {
+    cursor: grab;
+  }
+
+  .agent-card.is-draggable:active {
+    cursor: grabbing;
+  }
+
+  .agent-card.is-dragging {
+    opacity: 0.5;
+    transform: scale(0.98);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
   }
 </style>

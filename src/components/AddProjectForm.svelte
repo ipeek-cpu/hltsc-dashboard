@@ -37,6 +37,13 @@
 			if (!validation.valid) {
 				// Check if the folder needs beads initialization
 				if (validation.needsInit) {
+					// If .beads directory already exists, auto-repair without showing dialog
+					if (validation.hasBeadsDir) {
+						initPath = projectPath.trim();
+						await autoRepairBeads();
+						return;
+					}
+					// Otherwise show the init dialog
 					needsInit = true;
 					initPath = projectPath.trim();
 					error = null;
@@ -74,6 +81,45 @@
 		}, 500);
 	}
 
+	// Auto-repair beads when .beads dir exists but db is missing
+	async function autoRepairBeads() {
+		if (!initPath) return;
+
+		// Don't show init dialog, just repair silently
+		validating = true;
+		error = null;
+
+		try {
+			const response = await fetch('/api/projects/init-beads', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ path: initPath })
+			});
+
+			const result = await response.json();
+
+			if (!result.success) {
+				if (result.alreadyInitialized) {
+					// Already initialized - just add the project
+					await addProject(initPath);
+					initPath = null;
+					return;
+				}
+				// Show error but don't show init dialog
+				error = result.error || 'Failed to repair beads';
+				return;
+			}
+
+			// Repair succeeded, add the project
+			await addProject(initPath);
+			initPath = null;
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'An error occurred';
+		} finally {
+			validating = false;
+		}
+	}
+
 	async function initializeBeads() {
 		if (!initPath) return;
 
@@ -93,6 +139,13 @@
 			if (!result.success) {
 				if (result.notInstalled) {
 					beadsNotInstalled = true;
+					return;
+				} else if (result.alreadyInitialized) {
+					// Beads is already initialized - just add the project directly
+					await addProject(initPath);
+					needsInit = false;
+					initPath = null;
+					return;
 				} else {
 					error = result.error || 'Failed to initialize beads';
 				}
