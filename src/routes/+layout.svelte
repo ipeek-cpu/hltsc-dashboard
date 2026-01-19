@@ -3,6 +3,7 @@
 	import type { Snippet } from 'svelte';
 	import GlobalTaskIndicator from '../components/GlobalTaskIndicator.svelte';
 	import NotificationListener from '../components/NotificationListener.svelte';
+	import ErrorBoundary from '../components/ErrorBoundary.svelte';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -53,4 +54,8 @@
 {/if}
 -->
 
-{@render children()}
+<ErrorBoundary>
+	{#snippet children()}
+		{@render children()}
+	{/snippet}
+</ErrorBoundary>
