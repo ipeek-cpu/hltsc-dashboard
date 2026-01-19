@@ -75,15 +75,24 @@ Establish a solid foundation with clean git hygiene, reliable beads database syn
 ---
 
 ### BC-EP0-003: Implement State Transition Enforcement
-**Status**: Ready
+**Status**: Closed
 **Objective**: Enforce valid state transitions in all bead update operations.
 
 **Acceptance Criteria**:
-- [ ] API routes use validation before writing
-- [ ] Invalid transitions return 400 with clear error message
-- [ ] UI shows validation errors in toast notifications
-- [ ] State machine documented in code comments
-- [ ] Integration tests verify rejection of invalid transitions
+- [x] API routes use validation before writing
+- [x] Invalid transitions return 400 with clear error message
+- [~] UI shows validation errors in toast notifications (PARTIAL: modals show inline errors; global toast system deferred to BC-EP1)
+- [x] State machine documented in code comments
+- [x] Integration tests verify rejection of invalid transitions
+
+**Completion Evidence**:
+- `/api/projects/[id]/issues/[issueId]` PATCH uses `validateTransition()` (lines 66-91)
+- Invalid transitions return HTTP 400 with `error` and `missingFields`
+- State machine documented with ASCII diagram in `bead-lifecycle.ts`
+- 46 integration tests in `bead-transition-integration.test.ts`
+- All 149 tests passing
+
+**Note**: UI error surfacing via toast notifications deferred to BC-EP1 (Workflow). Current modals (`ClaimBeadModal`, `CompleteBeadModal`) display errors inline.
 
 **Dependencies**: BC-EP0-002
 

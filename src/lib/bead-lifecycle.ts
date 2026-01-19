@@ -1,19 +1,86 @@
 /**
  * Bead Lifecycle Management
- * Enforces valid state transitions and required data for bead workflow
+ *
+ * This module enforces the bead state machine, ensuring all status transitions
+ * follow valid paths and required data is provided for each transition.
+ *
+ * ## State Machine Diagram
+ *
+ * ```
+ *                    ┌─────────────────────────────────────────────────┐
+ *                    │                                                 │
+ *                    ▼                                                 │
+ *   ┌──────┐    ┌───────┐    ┌─────────────┐    ┌───────────┐    ┌────────┐
+ *   │ open │───▶│ ready │───▶│ in_progress │───▶│ in_review │───▶│ closed │
+ *   └──────┘    └───────┘    └─────────────┘    └───────────┘    └────────┘
+ *       │           │               │                │                │
+ *       │           │               │                │                │
+ *       │           │               │                └───────┐        │
+ *       │           │               │                        │        │
+ *       │           │               └───────────────────┐    │        │
+ *       │           │                                   │    │        │
+ *       │           │         ┌─────────┐               │    │        │
+ *       │           └────────▶│ blocked │◀──────────────┘    │        │
+ *       │           │         └─────────┘                    │        │
+ *       │           │               │                        │        │
+ *       │           │               └────────────────────────┼────────┤
+ *       │           │                                        │        │
+ *       │           │         ┌──────────┐                   │        │
+ *       └──────────▶│────────▶│ deferred │                   │        │
+ *                   │         └──────────┘                   │        │
+ *                   │               │                        │        │
+ *                   └───────────────┴────────────────────────┘        │
+ *                                                                     │
+ *                   └─────────────────────────────────────────────────┘
+ * ```
+ *
+ * ## Main Flow (Happy Path)
+ *
+ * 1. **open** - Bead created, needs refinement
+ * 2. **ready** - Bead is fully defined and ready for execution
+ * 3. **in_progress** - Agent has claimed the bead (requires: branch_name, agent_id)
+ * 4. **in_review** - Work submitted for review (requires: commit_hash, execution_log)
+ * 5. **closed** - Bead completed and approved
+ *
+ * ## Special States
+ *
+ * - **blocked** - Work is blocked by external dependency; can return to previous state
+ * - **deferred** - Work postponed; can be reactivated to open or ready
+ *
+ * ## Transition Requirements
+ *
+ * | Transition              | Required Fields                    |
+ * |-------------------------|------------------------------------|
+ * | ready → in_progress     | branch_name, agent_id              |
+ * | in_progress → in_review | commit_hash, execution_log         |
+ *
+ * ## API Integration
+ *
+ * The `/api/projects/[id]/issues/[issueId]` PATCH endpoint uses `validateTransition()`
+ * to enforce these rules. Invalid transitions return HTTP 400 with error details.
  */
 
 export type BeadStatus = 'open' | 'ready' | 'in_progress' | 'in_review' | 'closed' | 'blocked' | 'deferred';
 
-// Valid state transitions: open → ready → in_progress → in_review → closed
+/**
+ * Valid state transitions for each status.
+ *
+ * Key design decisions:
+ * - open can go directly to closed (for invalid/duplicate beads)
+ * - in_progress can go back to ready (if work needs to be unclaimed)
+ * - in_progress can go directly to closed (if abandoned)
+ * - in_review can go back to in_progress (for rework)
+ * - closed can only go to open (full cycle restart)
+ * - blocked/deferred are parking states that can return to the workflow
+ */
 const VALID_TRANSITIONS: Record<BeadStatus, BeadStatus[]> = {
 	open: ['ready', 'blocked', 'deferred', 'closed'],
 	ready: ['in_progress', 'open', 'blocked', 'deferred'],
-	in_progress: ['in_review', 'blocked', 'ready', 'closed'], // Allow closing directly if abandoned
-	in_review: ['closed', 'in_progress'], // Can go back to in_progress for rework
-	closed: ['open'], // Can reopen if needed
-	blocked: ['open', 'ready', 'in_progress'], // Can return to previous state
-	deferred: ['open', 'ready'] // Can reactivate
+	in_progress: ['in_review', 'blocked', 'ready', 'closed'],
+	in_review: ['closed', 'in_progress'],
+	closed: ['open'],
+	blocked: ['open', 'ready', 'in_progress'],
+	deferred: ['open', 'ready']
 };
 
 // Required fields for specific transitions
