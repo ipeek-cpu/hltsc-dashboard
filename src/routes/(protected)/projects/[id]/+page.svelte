@@ -1171,12 +1171,10 @@
 							{/each}
 						</div>
 
-						<aside>
-							<StaleBeadsPanel
-								{issues}
-								onissueclick={handleIssueClick}
-							/>
-						</aside>
+						<StaleBeadsPanel
+							{issues}
+							onissueclick={handleIssueClick}
+						/>
 					</div>
 				{:else if activeTab === 'epics'}
 				<div class="epics-container">
@@ -2073,10 +2071,6 @@
 		gap: 20px;
 		overflow-x: auto;
 		padding-bottom: 8px;
-	}
-
-	aside {
-		flex-shrink: 0;
 	}
 
 	.list-view-overlay {
