@@ -1295,8 +1295,14 @@
 				</div>
 				<div class="chat-sidebar" style="width: {chatSidebarWidth}px">
 					<div class="chat-panels">
-						{#each chatPanels as panel (panel.id)}
-							<div class="chat-panel" class:single={chatPanels.length === 1}>
+						{#each chatPanels as panel, index (panel.id)}
+							<div class="chat-panel" class:single={chatPanels.length === 1} class:dark={index === 1}>
+								<div class="panel-header">
+									<span class="panel-label">Chat {index + 1}</span>
+									<button class="panel-close-btn" onclick={() => closeChatPanel(panel.id)} title="Close this chat">
+										<Icon name="x" size={14} />
+									</button>
+								</div>
 								<ChatSheet
 									isOpen={true}
 									onclose={() => closeChatPanel(panel.id)}
@@ -1789,10 +1795,16 @@
 	}
 
 	.content-area {
-		flex: 1;
+		flex: 1 1 auto;
 		display: flex;
 		overflow: auto;
 		min-width: 0;
+		width: 100%;
+	}
+
+	/* When sidebar is hidden, ensure content takes full width */
+	.main-layout:not(.with-sidebar) .content-area {
+		width: 100%;
 	}
 
 	/* Chat sidebar */
@@ -1856,6 +1868,11 @@
 		overflow: hidden;
 		border-bottom: 1px solid #e5e7eb;
 		min-height: 0;
+		background: #ffffff;
+	}
+
+	.chat-panel.dark {
+		background: #1e293b;
 	}
 
 	.chat-panel.single {
@@ -1864,6 +1881,57 @@
 
 	.chat-panel:last-child {
 		border-bottom: none;
+	}
+
+	.panel-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 6px 12px;
+		background: #f8fafc;
+		border-bottom: 1px solid #e5e7eb;
+		flex-shrink: 0;
+	}
+
+	.chat-panel.dark .panel-header {
+		background: #0f172a;
+		border-bottom-color: #334155;
+	}
+
+	.panel-label {
+		font-size: 11px;
+		font-weight: 600;
+		color: #64748b;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.chat-panel.dark .panel-label {
+		color: #94a3b8;
+	}
+
+	.panel-close-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		background: transparent;
+		border: none;
+		border-radius: 4px;
+		color: #94a3b8;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.panel-close-btn:hover {
+		background: #e2e8f0;
+		color: #475569;
+	}
+
+	.chat-panel.dark .panel-close-btn:hover {
+		background: #334155;
+		color: #e2e8f0;
 	}
 
 	/* Ensure ChatSheet fills the panel */
@@ -1878,6 +1946,45 @@
 		display: flex;
 		flex-direction: column;
 		width: 100% !important;
+	}
+
+	/* Dark theme overrides for ChatSheet */
+	.chat-panel.dark :global(.sheet-header) {
+		background: #1e293b;
+		border-bottom-color: #334155;
+	}
+
+	.chat-panel.dark :global(.sheet-header),
+	.chat-panel.dark :global(.header-content),
+	.chat-panel.dark :global(.agent-title) {
+		color: #e2e8f0;
+	}
+
+	.chat-panel.dark :global(.agent-description) {
+		color: #94a3b8;
+	}
+
+	.chat-panel.dark :global(.status-badge) {
+		background: #334155;
+	}
+
+	.chat-panel.dark :global(.messages-area) {
+		background: #0f172a;
+	}
+
+	.chat-panel.dark :global(.input-area) {
+		background: #1e293b;
+		border-top-color: #334155;
+	}
+
+	.chat-panel.dark :global(.message-input) {
+		background: #334155;
+		border-color: #475569;
+		color: #e2e8f0;
+	}
+
+	.chat-panel.dark :global(.empty-state) {
+		color: #64748b;
 	}
 
 	.add-chat-btn {
