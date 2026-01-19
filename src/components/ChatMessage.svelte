@@ -8,6 +8,9 @@
 		name: string;
 		input: Record<string, unknown>;
 		result?: unknown;
+		error?: string;
+		startedAt?: Date;
+		completedAt?: Date;
 	}
 
 	let { role, content, toolCalls = [], isStreaming = false, timestamp, totalTokens }: {
@@ -116,6 +119,9 @@
 						name={tool.name}
 						input={tool.input}
 						result={tool.result}
+						error={tool.error}
+						startedAt={tool.startedAt}
+						completedAt={tool.completedAt}
 						isRunning={isCommandRunning(tool)}
 					/>
 				{/if}

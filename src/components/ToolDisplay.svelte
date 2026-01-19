@@ -5,11 +5,25 @@
 		name: string;
 		input: Record<string, unknown>;
 		result?: unknown;
+		error?: string;
+		startedAt?: Date;
+		completedAt?: Date;
 		isRunning?: boolean;
 		isDark?: boolean;
 	}
 
-	let { name, input, result, isRunning = false, isDark = false }: Props = $props();
+	let { name, input, result, error, startedAt, completedAt, isRunning = false, isDark = false }: Props = $props();
+
+	// Calculate duration
+	let duration = $derived(() => {
+		if (!startedAt) return null;
+		const end = completedAt || (isRunning ? new Date() : null);
+		if (!end) return null;
+		const ms = new Date(end).getTime() - new Date(startedAt).getTime();
+		if (ms < 1000) return `${ms}ms`;
+		if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+		return `${(ms / 60000).toFixed(1)}m`;
+	});
 
 	// Track expanded state
 	let isExpanded = $state(false);
@@ -121,10 +135,10 @@
 	let resultSummary = $derived(getResultSummary());
 </script>
 
-<div class="tool-display" class:dark={isDark}>
+<div class="tool-display" class:dark={isDark} class:has-error={!!error}>
 	<div class="tool-header">
-		<div class="tool-icon">
-			<Icon name={toolInfo.icon} size={14} />
+		<div class="tool-icon" class:error-icon={!!error}>
+			<Icon name={error ? 'alert-circle' : toolInfo.icon} size={14} />
 		</div>
 		<div class="tool-info">
 			<span class="tool-title">{toolInfo.title}</span>
@@ -132,14 +146,24 @@
 				<span class="tool-subtitle">{toolInfo.subtitle}</span>
 			{/if}
 		</div>
-		{#if isRunning}
-			<div class="tool-running">
-				<Icon name="loader" size={14} />
-			</div>
-		{/if}
+		<div class="tool-meta">
+			{#if duration()}
+				<span class="tool-duration">{duration()}</span>
+			{/if}
+			{#if isRunning}
+				<div class="tool-running">
+					<Icon name="loader" size={14} />
+				</div>
+			{/if}
+		</div>
 	</div>
 
-	{#if result !== undefined && !isRunning}
+	{#if error}
+		<div class="tool-error">
+			<Icon name="x-circle" size={12} />
+			<span class="error-text">{error}</span>
+		</div>
+	{:else if result !== undefined && !isRunning}
 		<div class="tool-result">
 			<button class="result-toggle" onclick={() => isExpanded = !isExpanded}>
 				<Icon name={isExpanded ? 'chevron-down' : 'chevron-right'} size={12} />
@@ -168,6 +192,15 @@
 		background: rgba(59, 130, 246, 0.15);
 	}
 
+	.tool-display.has-error {
+		background: rgba(239, 68, 68, 0.08);
+		border-left-color: #ef4444;
+	}
+
+	.tool-display.dark.has-error {
+		background: rgba(239, 68, 68, 0.15);
+	}
+
 	.tool-header {
 		display: flex;
 		align-items: center;
@@ -189,6 +222,37 @@
 	.dark .tool-icon {
 		background: rgba(59, 130, 246, 0.25);
 		color: #60a5fa;
+	}
+
+	.tool-icon.error-icon {
+		background: rgba(239, 68, 68, 0.15);
+		color: #ef4444;
+	}
+
+	.dark .tool-icon.error-icon {
+		background: rgba(239, 68, 68, 0.25);
+		color: #f87171;
+	}
+
+	.tool-meta {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-shrink: 0;
+	}
+
+	.tool-duration {
+		font-size: 11px;
+		font-family: 'SF Mono', 'Consolas', monospace;
+		color: #9ca3af;
+		background: rgba(0, 0, 0, 0.05);
+		padding: 2px 6px;
+		border-radius: 4px;
+	}
+
+	.dark .tool-duration {
+		background: rgba(255, 255, 255, 0.1);
+		color: #94a3b8;
 	}
 
 	.tool-info {
@@ -314,5 +378,27 @@
 
 	.dark .result-content {
 		background: rgba(0, 0, 0, 0.3);
+	}
+
+	.tool-error {
+		display: flex;
+		align-items: flex-start;
+		gap: 8px;
+		margin-top: 10px;
+		padding: 8px 10px;
+		background: rgba(239, 68, 68, 0.1);
+		border-radius: 6px;
+		color: #dc2626;
+		font-size: 12px;
+	}
+
+	.dark .tool-error {
+		background: rgba(239, 68, 68, 0.2);
+		color: #f87171;
+	}
+
+	.error-text {
+		flex: 1;
+		line-height: 1.4;
 	}
 </style>

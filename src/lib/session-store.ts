@@ -14,6 +14,9 @@ export interface ToolCall {
 	name: string;
 	input: Record<string, unknown>;
 	result?: unknown;
+	error?: string;
+	startedAt?: Date;
+	completedAt?: Date;
 }
 
 export interface ChatSession {
