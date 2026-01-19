@@ -5,10 +5,11 @@
 	import McpRegistrySearch from '../../../components/McpRegistrySearch.svelte';
 	import type { McpServerWithScope, McpServerConfig } from '$lib/types';
 	import type { RepairSummary } from '$lib/data-repair';
+	import { settings, type Theme, type FontSize, type Density } from '$lib/stores/settings-store';
 
 	// Tab state
 	type Tab = 'mcp' | 'general' | 'claude' | 'logs';
-	let activeTab = $state<Tab>('mcp');
+	let activeTab = $state<Tab>('general');
 
 	// MCP servers state
 	let globalServers = $state<McpServerWithScope[]>([]);
@@ -263,6 +264,55 @@
 		return new Date(isoString).toLocaleString();
 	}
 
+	// Settings export/import
+	let importError = $state<string | null>(null);
+	let importSuccess = $state(false);
+
+	function exportSettings() {
+		const data = settings.exportSettings();
+		const blob = new Blob([data], { type: 'application/json' });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = 'beads-dashboard-settings.json';
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
+	}
+
+	function handleImport(event: Event) {
+		const input = event.target as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+
+		importError = null;
+		importSuccess = false;
+
+		const reader = new FileReader();
+		reader.onload = (e) => {
+			const content = e.target?.result as string;
+			const success = settings.importSettings(content);
+			if (success) {
+				importSuccess = true;
+				setTimeout(() => (importSuccess = false), 3000);
+			} else {
+				importError = 'Invalid settings file format';
+			}
+		};
+		reader.onerror = () => {
+			importError = 'Failed to read file';
+		};
+		reader.readAsText(file);
+		input.value = ''; // Reset for re-import
+	}
+
+	function resetSettings() {
+		if (confirm('Are you sure you want to reset all settings to defaults?')) {
+			settings.reset();
+		}
+	}
+
 	$effect(() => {
 		if (browser) {
 			loadGlobalServers();
@@ -362,6 +412,90 @@
 
 		{:else if activeTab === 'general'}
 			<div class="tab-content">
+				<section class="section">
+					<h2>
+						<Icon name="sun" size={18} />
+						Appearance
+					</h2>
+					<p class="section-description">
+						Customize the look and feel of the dashboard.
+					</p>
+
+					<div class="settings-grid">
+						<div class="setting-row">
+							<div class="setting-info">
+								<span class="setting-label">Theme</span>
+								<span class="setting-desc">Choose your preferred color scheme</span>
+							</div>
+							<div class="setting-control">
+								<div class="segmented-control">
+									{#each [
+										{ value: 'light', label: 'Light', icon: 'sun' },
+										{ value: 'dark', label: 'Dark', icon: 'moon' },
+										{ value: 'auto', label: 'Auto', icon: 'monitor' }
+									] as option}
+										<button
+											class="segment"
+											class:active={$settings.appearance.theme === option.value}
+											onclick={() => settings.setTheme(option.value as Theme)}
+										>
+											<Icon name={option.icon} size={14} />
+											{option.label}
+										</button>
+									{/each}
+								</div>
+							</div>
+						</div>
+
+						<div class="setting-row">
+							<div class="setting-info">
+								<span class="setting-label">Font Size</span>
+								<span class="setting-desc">Adjust text size throughout the app</span>
+							</div>
+							<div class="setting-control">
+								<div class="segmented-control">
+									{#each [
+										{ value: 'small', label: 'Small' },
+										{ value: 'medium', label: 'Medium' },
+										{ value: 'large', label: 'Large' }
+									] as option}
+										<button
+											class="segment"
+											class:active={$settings.appearance.fontSize === option.value}
+											onclick={() => settings.setFontSize(option.value as FontSize)}
+										>
+											{option.label}
+										</button>
+									{/each}
+								</div>
+							</div>
+						</div>
+
+						<div class="setting-row">
+							<div class="setting-info">
+								<span class="setting-label">Density</span>
+								<span class="setting-desc">Control spacing and padding</span>
+							</div>
+							<div class="setting-control">
+								<div class="segmented-control">
+									{#each [
+										{ value: 'compact', label: 'Compact' },
+										{ value: 'comfortable', label: 'Comfortable' }
+									] as option}
+										<button
+											class="segment"
+											class:active={$settings.appearance.density === option.value}
+											onclick={() => settings.setDensity(option.value as Density)}
+										>
+											{option.label}
+										</button>
+									{/each}
+								</div>
+							</div>
+						</div>
+					</div>
+				</section>
+
 				<section class="section">
 					<h2>
 						<Icon name="user" size={18} />
@@ -502,6 +636,46 @@
 								{/if}
 							</div>
 						{/if}
+					{/if}
+				</section>
+
+				<section class="section">
+					<h2>
+						<Icon name="download" size={18} />
+						Settings Backup
+					</h2>
+					<p class="section-description">
+						Export your settings to a file or import from a previous backup.
+					</p>
+
+					<div class="backup-actions">
+						<button class="btn-action" onclick={exportSettings}>
+							<Icon name="download" size={16} />
+							Export Settings
+						</button>
+						<label class="btn-action file-input-label">
+							<Icon name="upload" size={16} />
+							Import Settings
+							<input type="file" accept=".json" onchange={handleImport} />
+						</label>
+						<button class="btn-action danger" onclick={resetSettings}>
+							<Icon name="refresh-cw" size={16} />
+							Reset to Defaults
+						</button>
+					</div>
+
+					{#if importError}
+						<div class="import-error">
+							<Icon name="alert-circle" size={16} />
+							{importError}
+						</div>
+					{/if}
+
+					{#if importSuccess}
+						<div class="import-success">
+							<Icon name="check-circle" size={16} />
+							Settings imported successfully!
+						</div>
 					{/if}
 				</section>
 
@@ -1204,6 +1378,116 @@
 		border-radius: 8px;
 		font-size: 13px;
 		color: #0369a1;
+	}
+
+	/* Appearance Settings */
+	.settings-grid {
+		display: flex;
+		flex-direction: column;
+		gap: 20px;
+	}
+
+	.setting-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 20px;
+	}
+
+	.setting-info {
+		flex: 1;
+	}
+
+	.setting-label {
+		display: block;
+		font-size: 14px;
+		font-weight: 500;
+		color: #1a1a1a;
+		margin-bottom: 2px;
+	}
+
+	.setting-desc {
+		display: block;
+		font-size: 13px;
+		color: #666666;
+	}
+
+	.setting-control {
+		flex-shrink: 0;
+	}
+
+	.segmented-control {
+		display: flex;
+		background: #f3f4f6;
+		border-radius: 8px;
+		padding: 3px;
+	}
+
+	.segment {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 8px 14px;
+		border: none;
+		background: transparent;
+		border-radius: 6px;
+		font-size: 13px;
+		font-weight: 500;
+		color: #6b7280;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		font-family: 'Figtree', sans-serif;
+	}
+
+	.segment:hover {
+		color: #374151;
+	}
+
+	.segment.active {
+		background: #ffffff;
+		color: #1a1a1a;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+	}
+
+	/* Settings Backup */
+	.backup-actions {
+		display: flex;
+		gap: 10px;
+		flex-wrap: wrap;
+	}
+
+	.file-input-label {
+		cursor: pointer;
+	}
+
+	.file-input-label input[type='file'] {
+		display: none;
+	}
+
+	.import-error {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-top: 12px;
+		padding: 10px 14px;
+		background: #fef2f2;
+		border: 1px solid #fecaca;
+		border-radius: 8px;
+		color: #dc2626;
+		font-size: 14px;
+	}
+
+	.import-success {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-top: 12px;
+		padding: 10px 14px;
+		background: #f0fdf4;
+		border: 1px solid #bbf7d0;
+		border-radius: 8px;
+		color: #16a34a;
+		font-size: 14px;
 	}
 
 </style>

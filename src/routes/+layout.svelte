@@ -5,12 +5,28 @@
 	import NotificationListener from '../components/NotificationListener.svelte';
 	import ErrorBoundary from '../components/ErrorBoundary.svelte';
 	import Toast from '../components/Toast.svelte';
+	import HelpPanel from '../components/HelpPanel.svelte';
 
 	let { children }: { children: Snippet } = $props();
 
 	let showUpdateModal = $state(false);
 	let hasChecked = false;
 	let UpdateModalComponent = $state<any>(null);
+	let showHelpPanel = $state(false);
+
+	// Global keyboard shortcuts
+	function handleKeydown(event: KeyboardEvent) {
+		// Cmd+? or Cmd+Shift+/ for help
+		if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key === '/') {
+			event.preventDefault();
+			showHelpPanel = !showHelpPanel;
+		}
+		// Also support F1 for help
+		if (event.key === 'F1') {
+			event.preventDefault();
+			showHelpPanel = true;
+		}
+	}
 
 	$effect(() => {
 		if (browser && !hasChecked) {
@@ -59,6 +75,10 @@
 	{@render children()}
 {/snippet}
 
+<svelte:window onkeydown={handleKeydown} />
+
 <ErrorBoundary children={errorBoundaryContent} />
 
 <Toast />
+
+<HelpPanel isOpen={showHelpPanel} onclose={() => (showHelpPanel = false)} />

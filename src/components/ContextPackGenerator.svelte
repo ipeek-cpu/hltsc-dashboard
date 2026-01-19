@@ -2,6 +2,7 @@
 	import Icon from './Icon.svelte';
 	import type { ContextPack, ContextPackRequest, ContextPackConfig } from '$lib/context-pack-types';
 	import { DEFAULT_CONTEXT_PACK_CONFIG } from '$lib/context-pack-types';
+	import type { ProjectProfile, ContextPackDefaults } from '$lib/profiles';
 
 	let { projectId, onGenerated, onCancel }: {
 		projectId: string;
@@ -21,10 +22,53 @@
 	let maxDepth = $state(DEFAULT_CONTEXT_PACK_CONFIG.maxDepth);
 	let includeTests = $state(DEFAULT_CONTEXT_PACK_CONFIG.includeTests);
 
+	// Profile integration
+	let profile = $state<{ id: string; name: string; icon: string } | null>(null);
+	let profileDefaults = $state<ContextPackDefaults | null>(null);
+	let profileApplied = $state(false);
+
 	let isGenerating = $state(false);
 	let error = $state<string | null>(null);
 
 	let canGenerate = $derived(entryPoint.trim().length > 0);
+
+	// Load profile on mount
+	$effect(() => {
+		loadProfile();
+	});
+
+	async function loadProfile() {
+		try {
+			const response = await fetch(`/api/projects/${projectId}/profile`);
+			if (response.ok) {
+				const data = await response.json();
+				profile = data.currentProfile;
+				profileDefaults = data.contextDefaults;
+			}
+		} catch (err) {
+			console.error('Failed to load profile:', err);
+		}
+	}
+
+	function applyProfileDefaults() {
+		if (!profileDefaults) return;
+
+		// Apply profile's max depth if specified
+		if (profileDefaults.maxDepth !== undefined) {
+			maxDepth = profileDefaults.maxDepth;
+		}
+
+		// Set a helpful query based on profile's CodeGraph focus
+		if (profileDefaults.codeGraphFocus.length > 0) {
+			const focusStr = profileDefaults.codeGraphFocus.join(', ');
+			if (!entryPoint.trim()) {
+				entryPoint = `Find key ${focusStr} in this project`;
+			}
+		}
+
+		profileApplied = true;
+		showAdvanced = true;
+	}
 
 	async function generate() {
 		if (!canGenerate || isGenerating) return;
@@ -99,6 +143,24 @@
 	</header>
 
 	<div class="generator-form">
+		{#if profile && profileDefaults}
+			<div class="profile-hint" class:applied={profileApplied}>
+				<div class="profile-info">
+					<Icon name={profile.icon} size={16} />
+					<span class="profile-name">{profile.name} Profile</span>
+					{#if profileApplied}
+						<span class="applied-badge">Defaults applied</span>
+					{/if}
+				</div>
+				{#if !profileApplied}
+					<button class="apply-profile-btn" onclick={applyProfileDefaults}>
+						<Icon name="zap" size={12} />
+						Use Profile Defaults
+					</button>
+				{/if}
+			</div>
+		{/if}
+
 		<div class="form-group">
 			<label for="entry-point">Entry Point</label>
 			<div class="entry-point-input">
@@ -289,6 +351,65 @@
 		display: flex;
 		flex-direction: column;
 		gap: 16px;
+	}
+
+	.profile-hint {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 10px 14px;
+		background: #f0f9ff;
+		border: 1px solid #bae6fd;
+		border-radius: 8px;
+	}
+
+	.profile-hint.applied {
+		background: #f0fdf4;
+		border-color: #bbf7d0;
+	}
+
+	.profile-info {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 13px;
+		color: #0369a1;
+	}
+
+	.profile-hint.applied .profile-info {
+		color: #15803d;
+	}
+
+	.profile-name {
+		font-weight: 500;
+	}
+
+	.applied-badge {
+		font-size: 11px;
+		padding: 2px 6px;
+		background: #dcfce7;
+		color: #166534;
+		border-radius: 4px;
+	}
+
+	.apply-profile-btn {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 10px;
+		border: 1px solid #7dd3fc;
+		border-radius: 5px;
+		background: #ffffff;
+		font-size: 12px;
+		font-weight: 500;
+		color: #0284c7;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.apply-profile-btn:hover {
+		background: #e0f2fe;
+		border-color: #38bdf8;
 	}
 
 	.form-group {

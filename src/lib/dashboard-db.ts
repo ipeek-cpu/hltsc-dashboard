@@ -42,6 +42,12 @@ function initSchema(): void {
 	if (!hasDevConfig) {
 		database.exec('ALTER TABLE projects ADD COLUMN dev_config TEXT');
 	}
+
+	// Migration: Add profile_settings column if it doesn't exist
+	const hasProfileSettings = columns.some(col => col.name === 'profile_settings');
+	if (!hasProfileSettings) {
+		database.exec('ALTER TABLE projects ADD COLUMN profile_settings TEXT');
+	}
 }
 
 export interface DevServerConfig {
@@ -53,13 +59,30 @@ export interface DevServerConfig {
 	previewUrl?: string;         // For Shopify themes - the myshopify.com preview URL
 }
 
+export interface CustomAction {
+	id: string;
+	label: string;
+	icon: string;
+	command: string;
+	description?: string;
+	requiresConfirmation?: boolean;
+}
+
+export interface ProfileSettings {
+	selectedProfiles: string[];  // Array of profile IDs (supports monorepos)
+	isAutoDetected: boolean;     // Whether using auto-detected profiles
+	customActions: CustomAction[]; // Project-specific custom actions
+	updatedAt: string;           // ISO timestamp
+}
+
 export interface Project {
 	id: string;
 	name: string;
 	path: string;
 	added_at: string;
 	last_accessed: string | null;
-	dev_config?: string | null;  // JSON string of DevServerConfig
+	dev_config?: string | null;      // JSON string of DevServerConfig
+	profile_settings?: string | null; // JSON string of ProfileSettings
 }
 
 export interface ProjectWithStats extends Project {
@@ -122,6 +145,25 @@ export function updateProjectName(id: string, name: string): void {
 export function updateProjectPath(id: string, newPath: string): void {
 	const database = getDb();
 	database.prepare('UPDATE projects SET path = ? WHERE id = ?').run(newPath, id);
+}
+
+export function getProjectProfileSettings(id: string): ProfileSettings | null {
+	const database = getDb();
+	const row = database.prepare('SELECT profile_settings FROM projects WHERE id = ?').get(id) as { profile_settings: string | null } | undefined;
+	if (!row?.profile_settings) return null;
+	try {
+		return JSON.parse(row.profile_settings) as ProfileSettings;
+	} catch {
+		return null;
+	}
+}
+
+export function setProjectProfileSettings(id: string, settings: ProfileSettings): void {
+	const database = getDb();
+	database.prepare('UPDATE projects SET profile_settings = ? WHERE id = ?').run(
+		JSON.stringify(settings),
+		id
+	);
 }
 
 export function removeProject(id: string): void {

@@ -34,6 +34,9 @@
 	import ColumnVisibilityDropdown from '../../../../components/ColumnVisibilityDropdown.svelte';
 	import BoardFilterToolbar from '../../../../components/BoardFilterToolbar.svelte';
 	import type { ListFilters } from '../../../../components/BeadsListFilters.svelte';
+	import ProfileSelector from '../../../../components/ProfileSelector.svelte';
+	import QuickActionBar from '../../../../components/QuickActionBar.svelte';
+	import type { QuickAction } from '$lib/profiles';
 
 	let project: ProjectInfo | null = $state(null);
 	let issues: Issue[] = $state([]);
@@ -88,6 +91,30 @@
 	let devServerStatus = $state<'stopped' | 'starting' | 'running' | 'error'>('stopped');
 	let devServerPort = $state<number | null>(null);
 	let hasDevConfig = $state(false);
+
+	// Profile state (supports multi-selection for monorepos)
+	interface ProfileInfo { id: string; name: string; description: string; icon: string; }
+	interface ProfileDetection {
+		detectedProfiles: Array<{ profileId: string; profileName: string; confidence: number; matchedPatterns: string[]; }>;
+		isMonorepo: boolean;
+		primaryProfile: string;
+	}
+	let selectedProfiles = $state<ProfileInfo[]>([]);
+	let availableProfiles = $state<ProfileInfo[]>([]);
+	let profileDetection = $state<ProfileDetection | null>(null);
+	let isAutoDetected = $state(true);
+	let quickActions = $state<QuickAction[]>([]);
+
+	// Custom actions (user-defined quick actions)
+	interface CustomAction {
+		id: string;
+		label: string;
+		icon: string;
+		command: string;
+		description?: string;
+		requiresConfirmation?: boolean;
+	}
+	let customActions = $state<CustomAction[]>([]);
 
 	// Board filter state
 	let boardFilter: BoardFilter = $state({});
@@ -894,6 +921,45 @@
 		}
 	});
 
+	// Load project profile
+	async function loadProjectProfile() {
+		const projectId = $page.params.id;
+		if (!projectId) return;
+
+		try {
+			const response = await fetch(`/api/projects/${projectId}/profile`);
+			if (response.ok) {
+				const data = await response.json();
+				selectedProfiles = data.selectedProfiles || [];
+				availableProfiles = data.availableProfiles || [];
+				profileDetection = data.detection || null;
+				isAutoDetected = data.isAutoDetected ?? true;
+				quickActions = data.quickActions || [];
+				customActions = data.customActions || [];
+			}
+		} catch (err) {
+			console.error('Failed to load profile:', err);
+		}
+	}
+
+	function handleProfileChange(profileIds: string[], useAutoDetect: boolean) {
+		// Reload profile data to get updated quick actions and selected profiles
+		loadProjectProfile();
+	}
+
+	function handleCustomActionsChange(actions: CustomAction[]) {
+		customActions = actions;
+		// Reload profile to get updated quickActions which includes custom actions
+		loadProjectProfile();
+	}
+
+	// Load profile on mount
+	$effect(() => {
+		if (browser && project) {
+			loadProjectProfile();
+		}
+	});
+
 	// Filtered issues for board
 	let filteredIssues = $derived.by(() => {
 		let result = issues;
@@ -1115,6 +1181,26 @@
 		{#if activeTab === 'board'}
 			<div class="board-toolbar">
 				<div class="board-controls-left">
+					{#if selectedProfiles.length > 0 || availableProfiles.length > 0}
+						<ProfileSelector
+							projectId={$page.params.id || ''}
+							{selectedProfiles}
+							{availableProfiles}
+							detection={profileDetection}
+							{isAutoDetected}
+							{customActions}
+							onchange={handleProfileChange}
+							onCustomActionsChange={handleCustomActionsChange}
+						/>
+					{/if}
+					{#if quickActions.length > 0}
+						<QuickActionBar
+							projectId={$page.params.id || ''}
+							actions={quickActions}
+							compact={true}
+						/>
+					{/if}
+					<div class="toolbar-divider"></div>
 					<BoardFilterToolbar
 						{issues}
 						{agents}
@@ -1741,6 +1827,13 @@
 		gap: 8px;
 		flex: 1;
 		min-width: 0;
+	}
+
+	.toolbar-divider {
+		width: 1px;
+		height: 24px;
+		background: #e5e7eb;
+		margin: 0 4px;
 	}
 
 	.board-controls-right {
