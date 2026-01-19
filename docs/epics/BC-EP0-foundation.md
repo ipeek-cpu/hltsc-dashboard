@@ -161,17 +161,36 @@ Establish a solid foundation with clean git hygiene, reliable beads database syn
 ---
 
 ### BC-EP0-006: Implement Structured Logging
-**Status**: Ready
+**Status**: Closed
 **Objective**: Set up comprehensive logging for debugging and observability.
 
 **Acceptance Criteria**:
-- [ ] Log files created in ~/.beads-dashboard/
-- [ ] Log rotation: keep last 7 days
-- [ ] Log levels: debug, info, warn, error
-- [ ] All API errors logged with request context
-- [ ] All Claude CLI events logged
-- [ ] Settings page shows log file locations
-- [ ] Button to open log directory in Finder
+- [x] Log files created in ~/.beads-dashboard/
+- [x] Log rotation: keep last 7 days
+- [x] Log levels: debug, info, warn, error
+- [x] All API errors logged with request context
+- [x] All Claude CLI events logged
+- [x] Settings page shows log file locations
+- [x] Button to open log directory in Finder
+
+**Completion Evidence**:
+- `src/lib/logger.ts` - Centralized logging module with:
+  - `createLogger(category)` - category-specific loggers
+  - `createApiLogger(category)` - request-context aware API loggers
+  - Log levels: debug, info, warn, error with priority filtering
+  - `rotateOldLogs()` - removes logs older than 7 days
+  - `clearAllLogs()` - clears all log files
+  - `listLogFiles()` - lists files with size/date
+  - Pre-created loggers: appLogger, apiLogger, claudeLogger, chatLogger, dbLogger
+- `/api/logs` endpoint for log management
+- Settings page "Logs" tab with:
+  - Log file list with sizes and modification dates
+  - "Open in Finder" button
+  - "Rotate Old Logs" button
+  - "Clear All" button with confirmation
+  - Log level documentation
+- `src/lib/__tests__/logger.test.ts` - 17 unit tests
+- All 197 tests passing
 
 **Dependencies**: BC-EP0-001
 

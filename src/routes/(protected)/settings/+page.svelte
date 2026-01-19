@@ -7,7 +7,7 @@
 	import type { RepairSummary } from '$lib/data-repair';
 
 	// Tab state
-	type Tab = 'mcp' | 'general' | 'claude';
+	type Tab = 'mcp' | 'general' | 'claude' | 'logs';
 	let activeTab = $state<Tab>('mcp');
 
 	// MCP servers state
@@ -31,6 +31,20 @@
 	// Claude Code status
 	let claudeStatus = $state<{ installed: boolean; version?: string } | null>(null);
 	let loadingClaude = $state(true);
+
+	// Logs state
+	interface LogFile {
+		name: string;
+		path: string;
+		size: number;
+		sizeFormatted: string;
+		modified: string;
+	}
+	let logFiles = $state<LogFile[]>([]);
+	let logDir = $state<string>('');
+	let totalLogSize = $state<string>('');
+	let loadingLogs = $state(true);
+	let logOperation = $state<string | null>(null);
 
 	async function loadGlobalServers() {
 		try {
@@ -182,12 +196,80 @@
 		}
 	}
 
+	async function loadLogFiles() {
+		try {
+			loadingLogs = true;
+			const response = await fetch('/api/logs');
+			if (response.ok) {
+				const data = await response.json();
+				logFiles = data.files;
+				logDir = data.logDir;
+				totalLogSize = data.totalSizeFormatted;
+			}
+		} catch {
+			// Ignore errors
+		} finally {
+			loadingLogs = false;
+		}
+	}
+
+	async function rotateLogs() {
+		logOperation = 'rotate';
+		try {
+			const response = await fetch('/api/logs', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: 'rotate' })
+			});
+			if (response.ok) {
+				await loadLogFiles();
+			}
+		} catch {
+			// Ignore errors
+		} finally {
+			logOperation = null;
+		}
+	}
+
+	async function clearLogs() {
+		if (!confirm('Are you sure you want to delete all log files?')) return;
+		logOperation = 'clear';
+		try {
+			const response = await fetch('/api/logs', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ action: 'clear' })
+			});
+			if (response.ok) {
+				await loadLogFiles();
+			}
+		} catch {
+			// Ignore errors
+		} finally {
+			logOperation = null;
+		}
+	}
+
+	function openLogDirectory() {
+		// Use Electron IPC if available, otherwise alert
+		if (typeof window !== 'undefined' && (window as unknown as { electronAPI?: { openPath?: (path: string) => void } }).electronAPI?.openPath) {
+			(window as unknown as { electronAPI: { openPath: (path: string) => void } }).electronAPI.openPath(logDir);
+		} else {
+			alert(`Log directory: ${logDir}\n\nOpen this path in Finder to view log files.`);
+		}
+	}
+
+	function formatDate(isoString: string): string {
+		return new Date(isoString).toLocaleString();
+	}
+
 	$effect(() => {
 		if (browser) {
 			loadGlobalServers();
 			loadSkillLevel();
 			loadClaudeStatus();
 			loadProjects();
+			loadLogFiles();
 		}
 	});
 </script>
@@ -231,6 +313,14 @@
 		>
 			<Icon name="terminal" size={16} />
 			Claude Code
+		</button>
+		<button
+			class="tab"
+			class:active={activeTab === 'logs'}
+			onclick={() => activeTab = 'logs'}
+		>
+			<Icon name="file-text" size={16} />
+			Logs
 		</button>
 	</div>
 
@@ -448,6 +538,110 @@
 					{:else}
 						<div class="error">Unable to check Claude Code status</div>
 					{/if}
+				</section>
+			</div>
+
+		{:else if activeTab === 'logs'}
+			<div class="tab-content">
+				<section class="section">
+					<h2>
+						<Icon name="file-text" size={18} />
+						Log Files
+					</h2>
+					<p class="section-description">
+						Application logs are stored in <code>{logDir || '~/.beads-dashboard/'}</code>
+					</p>
+
+					<div class="log-actions">
+						<button
+							class="btn-action"
+							onclick={openLogDirectory}
+						>
+							<Icon name="folder" size={16} />
+							Open in Finder
+						</button>
+						<button
+							class="btn-action"
+							onclick={rotateLogs}
+							disabled={logOperation !== null}
+						>
+							{#if logOperation === 'rotate'}
+								<Icon name="loader" size={16} />
+							{:else}
+								<Icon name="refresh-cw" size={16} />
+							{/if}
+							Rotate Old Logs
+						</button>
+						<button
+							class="btn-action danger"
+							onclick={clearLogs}
+							disabled={logOperation !== null}
+						>
+							{#if logOperation === 'clear'}
+								<Icon name="loader" size={16} />
+							{:else}
+								<Icon name="trash-2" size={16} />
+							{/if}
+							Clear All
+						</button>
+					</div>
+
+					{#if loadingLogs}
+						<div class="loading">Loading log files...</div>
+					{:else if logFiles.length === 0}
+						<p class="empty-message">No log files found.</p>
+					{:else}
+						<div class="log-summary">
+							<span>{logFiles.length} files</span>
+							<span class="log-size">{totalLogSize} total</span>
+						</div>
+						<div class="log-list">
+							{#each logFiles as file}
+								<div class="log-item">
+									<div class="log-name">
+										<Icon name="file" size={14} />
+										{file.name}
+									</div>
+									<div class="log-meta">
+										<span class="log-size">{file.sizeFormatted}</span>
+										<span class="log-date">{formatDate(file.modified)}</span>
+									</div>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				</section>
+
+				<section class="section">
+					<h2>
+						<Icon name="info" size={18} />
+						Log Levels
+					</h2>
+					<p class="section-description">
+						The application logs at the following levels:
+					</p>
+					<div class="log-levels">
+						<div class="level-item">
+							<span class="level-name debug">DEBUG</span>
+							<span class="level-desc">Detailed diagnostic information</span>
+						</div>
+						<div class="level-item">
+							<span class="level-name info">INFO</span>
+							<span class="level-desc">General operational information</span>
+						</div>
+						<div class="level-item">
+							<span class="level-name warn">WARN</span>
+							<span class="level-desc">Warning conditions that may need attention</span>
+						</div>
+						<div class="level-item">
+							<span class="level-name error">ERROR</span>
+							<span class="level-desc">Error conditions and failures</span>
+						</div>
+					</div>
+					<p class="log-retention">
+						<Icon name="clock" size={14} />
+						Logs older than 7 days are automatically cleaned up.
+					</p>
 				</section>
 			</div>
 		{/if}
@@ -854,6 +1048,162 @@
 	.btn-preview:disabled :global(.icon),
 	.btn-repair:disabled :global(.icon) {
 		animation: spin 1s linear infinite;
+	}
+
+	/* Logs Tab Styles */
+	.log-actions {
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+		margin-bottom: 16px;
+	}
+
+	.btn-action {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 8px 14px;
+		border-radius: 8px;
+		font-size: 14px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		font-family: 'Figtree', sans-serif;
+		background: #ffffff;
+		border: 1px solid #e0e0e0;
+		color: #4b5563;
+	}
+
+	.btn-action:hover:not(:disabled) {
+		background: #f5f5f5;
+	}
+
+	.btn-action:disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+	}
+
+	.btn-action.danger {
+		color: #dc2626;
+		border-color: #fecaca;
+	}
+
+	.btn-action.danger:hover:not(:disabled) {
+		background: #fef2f2;
+	}
+
+	.btn-action:disabled :global(.icon) {
+		animation: spin 1s linear infinite;
+	}
+
+	.log-summary {
+		display: flex;
+		gap: 16px;
+		padding: 12px;
+		background: #f8fafc;
+		border-radius: 8px;
+		margin-bottom: 12px;
+		font-size: 14px;
+		color: #666666;
+	}
+
+	.log-list {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.log-item {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 10px 12px;
+		background: #ffffff;
+		border: 1px solid #eaeaea;
+		border-radius: 8px;
+		font-size: 14px;
+	}
+
+	.log-name {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-weight: 500;
+		color: #1a1a1a;
+	}
+
+	.log-meta {
+		display: flex;
+		gap: 16px;
+		color: #888888;
+		font-size: 13px;
+	}
+
+	.log-size {
+		font-family: monospace;
+	}
+
+	.log-date {
+		color: #aaaaaa;
+	}
+
+	.log-levels {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.level-item {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.level-name {
+		font-family: monospace;
+		font-size: 12px;
+		font-weight: 600;
+		padding: 4px 8px;
+		border-radius: 4px;
+		min-width: 60px;
+		text-align: center;
+	}
+
+	.level-name.debug {
+		background: #f3f4f6;
+		color: #6b7280;
+	}
+
+	.level-name.info {
+		background: #dbeafe;
+		color: #2563eb;
+	}
+
+	.level-name.warn {
+		background: #fef3c7;
+		color: #d97706;
+	}
+
+	.level-name.error {
+		background: #fee2e2;
+		color: #dc2626;
+	}
+
+	.level-desc {
+		font-size: 14px;
+		color: #666666;
+	}
+
+	.log-retention {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-top: 16px;
+		padding: 10px 12px;
+		background: #f0f9ff;
+		border-radius: 8px;
+		font-size: 13px;
+		color: #0369a1;
 	}
 
 </style>
