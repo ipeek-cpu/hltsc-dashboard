@@ -690,7 +690,7 @@
 		if (!isResizingSidebar) return;
 		const newWidth = window.innerWidth - e.clientX;
 		// Min 300px, max 800px
-		chatSidebarWidth = Math.max(300, Math.min(800, newWidth));
+		chatSidebarWidth = Math.max(300, Math.min(window.innerWidth * 0.6, newWidth));
 	}
 
 	function endSidebarResize() {
@@ -1296,7 +1296,7 @@
 				<div class="chat-sidebar" style="width: {chatSidebarWidth}px">
 					<div class="chat-panels">
 						{#each chatPanels as panel, index (panel.id)}
-							<div class="chat-panel" class:single={chatPanels.length === 1} class:dark={index === 1}>
+							<div class="chat-panel" class:single={chatPanels.length === 1}>
 								<div class="panel-header">
 									<span class="panel-label">Chat {index + 1}</span>
 									<button class="panel-close-btn" onclick={() => closeChatPanel(panel.id)} title="Close this chat">
@@ -1845,18 +1845,18 @@
 	.chat-sidebar {
 		display: flex;
 		flex-direction: column;
-		background: #ffffff;
-		border-left: 1px solid #e5e7eb;
+		background: #1a1a1a;
+		border-left: 1px solid #334155;
 		overflow: hidden;
 		min-width: 300px;
-		max-width: 800px;
+		max-width: 60vw;
 		height: 100%;
 	}
 
 	.chat-panels {
 		flex: 1;
 		display: flex;
-		flex-direction: column;
+		flex-direction: row;
 		overflow: hidden;
 		min-height: 0;
 	}
@@ -1866,21 +1866,18 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
-		border-bottom: 1px solid #e5e7eb;
+		border-right: 1px solid #334155;
 		min-height: 0;
-		background: #ffffff;
-	}
-
-	.chat-panel.dark {
-		background: #1e293b;
+		min-width: 0;
+		background: #1a1a1a;
 	}
 
 	.chat-panel.single {
-		border-bottom: none;
+		border-right: none;
 	}
 
 	.chat-panel:last-child {
-		border-bottom: none;
+		border-right: none;
 	}
 
 	.panel-header {
@@ -1888,26 +1885,17 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 6px 12px;
-		background: #f8fafc;
-		border-bottom: 1px solid #e5e7eb;
-		flex-shrink: 0;
-	}
-
-	.chat-panel.dark .panel-header {
 		background: #0f172a;
-		border-bottom-color: #334155;
+		border-bottom: 1px solid #334155;
+		flex-shrink: 0;
 	}
 
 	.panel-label {
 		font-size: 11px;
 		font-weight: 600;
-		color: #64748b;
+		color: #94a3b8;
 		text-transform: uppercase;
 		letter-spacing: 0.5px;
-	}
-
-	.chat-panel.dark .panel-label {
-		color: #94a3b8;
 	}
 
 	.panel-close-btn {
@@ -1925,11 +1913,6 @@
 	}
 
 	.panel-close-btn:hover {
-		background: #e2e8f0;
-		color: #475569;
-	}
-
-	.chat-panel.dark .panel-close-btn:hover {
 		background: #334155;
 		color: #e2e8f0;
 	}
@@ -1948,43 +1931,92 @@
 		width: 100% !important;
 	}
 
-	/* Dark theme overrides for ChatSheet */
-	.chat-panel.dark :global(.sheet-header) {
-		background: #1e293b;
+	/* Dark theme overrides for ChatSheet - applied to all panels */
+	.chat-panel :global(.sheet-header) {
+		background: #1a1a1a;
 		border-bottom-color: #334155;
 	}
 
-	.chat-panel.dark :global(.sheet-header),
-	.chat-panel.dark :global(.header-content),
-	.chat-panel.dark :global(.agent-title) {
+	.chat-panel :global(.sheet-header),
+	.chat-panel :global(.header-content),
+	.chat-panel :global(.agent-title) {
 		color: #e2e8f0;
 	}
 
-	.chat-panel.dark :global(.agent-description) {
+	.chat-panel :global(.agent-description) {
 		color: #94a3b8;
 	}
 
-	.chat-panel.dark :global(.status-badge) {
+	.chat-panel :global(.status-badge) {
 		background: #334155;
 	}
 
-	.chat-panel.dark :global(.messages-area) {
-		background: #0f172a;
+	.chat-panel :global(.messages-area) {
+		background: #0a0a0a;
 	}
 
-	.chat-panel.dark :global(.input-area) {
-		background: #1e293b;
+	.chat-panel :global(.input-area) {
+		background: #1a1a1a;
 		border-top-color: #334155;
 	}
 
-	.chat-panel.dark :global(.message-input) {
-		background: #334155;
-		border-color: #475569;
+	.chat-panel :global(.message-input) {
+		background: #262626;
+		border-color: #404040;
 		color: #e2e8f0;
 	}
 
-	.chat-panel.dark :global(.empty-state) {
-		color: #64748b;
+	.chat-panel :global(.message-input)::placeholder {
+		color: #6b7280;
+	}
+
+	.chat-panel :global(.empty-state) {
+		color: #6b7280;
+	}
+
+	.chat-panel :global(.empty-state-icon) {
+		color: #404040;
+	}
+
+	/* Dark theme for session stats */
+	.chat-panel :global(.session-stats) {
+		background: #1a1a1a;
+		border-top-color: #334155;
+		border-bottom-color: #334155;
+	}
+
+	.chat-panel :global(.stat-item) {
+		color: #94a3b8;
+	}
+
+	.chat-panel :global(.stat-value) {
+		color: #e2e8f0;
+	}
+
+	/* Dark theme for send button and controls */
+	.chat-panel :global(.send-btn) {
+		background: #3b82f6;
+	}
+
+	.chat-panel :global(.send-btn:hover) {
+		background: #2563eb;
+	}
+
+	.chat-panel :global(.model-selector),
+	.chat-panel :global(.agent-selector) {
+		background: #262626;
+		border-color: #404040;
+		color: #e2e8f0;
+	}
+
+	.chat-panel :global(.keyboard-hints) {
+		color: #6b7280;
+	}
+
+	.chat-panel :global(.keyboard-hint) {
+		background: #262626;
+		border-color: #404040;
+		color: #94a3b8;
 	}
 
 	.add-chat-btn {
@@ -1993,10 +2025,10 @@
 		justify-content: center;
 		gap: 6px;
 		padding: 10px;
-		background: #f9fafb;
+		background: #1a1a1a;
 		border: none;
-		border-top: 1px solid #e5e7eb;
-		color: #6b7280;
+		border-top: 1px solid #334155;
+		color: #94a3b8;
 		font-size: 12px;
 		font-weight: 500;
 		cursor: pointer;
@@ -2005,8 +2037,8 @@
 	}
 
 	.add-chat-btn:hover {
-		background: #f3f4f6;
-		color: #374151;
+		background: #262626;
+		color: #e2e8f0;
 	}
 
 	.chat-toggle.active {
