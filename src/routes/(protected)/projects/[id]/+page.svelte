@@ -1838,6 +1838,7 @@
 		overflow: hidden;
 		min-width: 300px;
 		max-width: 800px;
+		height: 100%;
 	}
 
 	.chat-panels {
@@ -1845,13 +1846,16 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+		min-height: 0;
 	}
 
 	.chat-panel {
 		flex: 1;
 		display: flex;
+		flex-direction: column;
 		overflow: hidden;
 		border-bottom: 1px solid #e5e7eb;
+		min-height: 0;
 	}
 
 	.chat-panel.single {
@@ -1860,6 +1864,20 @@
 
 	.chat-panel:last-child {
 		border-bottom: none;
+	}
+
+	/* Ensure ChatSheet fills the panel */
+	.chat-panel :global(.sheet-overlay) {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.chat-panel :global(.chat-sheet) {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		width: 100% !important;
 	}
 
 	.add-chat-btn {
