@@ -6,6 +6,8 @@
   import CommentThread from './CommentThread.svelte';
   import MarkdownEditor from './MarkdownEditor.svelte';
   import ConfirmDeleteModal from './ConfirmDeleteModal.svelte';
+  import ClaimBeadModal from './ClaimBeadModal.svelte';
+  import CompleteBeadModal from './CompleteBeadModal.svelte';
 
   let { issue, isOpen, onclose, onissueclick, onback, canGoBack = false, onupdate, ondelete, projectId, agents = [], onstarttask, onchattask, onstoptask, activeRunId = null }: {
     issue: IssueWithDetails | null;
@@ -37,6 +39,10 @@
   let showDeleteModal = $state(false);
   let deletePreview = $state<{ issue: Issue; descendants: Issue[] } | null>(null);
   let isDeleting = $state(false);
+
+  // Claim/Complete modal state
+  let showClaimModal = $state(false);
+  let showCompleteModal = $state(false);
 
   // Reset edit state when issue changes
   $effect(() => {
@@ -145,6 +151,87 @@
     showDeleteModal = false;
     deletePreview = null;
   }
+
+  // Claim bead (ready → in_progress)
+  function openClaimModal() {
+    showClaimModal = true;
+  }
+
+  function closeClaimModal() {
+    showClaimModal = false;
+  }
+
+  async function handleClaim(data: { branch_name: string; agent_id: string }) {
+    if (!issue || !projectId) return;
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/issues/${issue.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'in_progress',
+          branch_name: data.branch_name,
+          assignee: data.agent_id,
+          agent_id: data.agent_id
+        })
+      });
+
+      if (response.ok) {
+        const updatedIssue = await response.json();
+        onupdate?.(updatedIssue);
+        showClaimModal = false;
+      } else {
+        const error = await response.json();
+        console.error('Failed to claim bead:', error);
+        // Error is shown in modal via its error state
+      }
+    } catch (err) {
+      console.error('Error claiming bead:', err);
+    }
+  }
+
+  // Complete bead (in_progress → in_review)
+  function openCompleteModal() {
+    showCompleteModal = true;
+  }
+
+  function closeCompleteModal() {
+    showCompleteModal = false;
+  }
+
+  async function handleComplete(data: { commit_hash: string; execution_log: string; pr_url?: string }) {
+    if (!issue || !projectId) return;
+
+    try {
+      const response = await fetch(`/api/projects/${projectId}/issues/${issue.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'in_review',
+          commit_hash: data.commit_hash,
+          execution_log: data.execution_log,
+          pr_url: data.pr_url
+        })
+      });
+
+      if (response.ok) {
+        const updatedIssue = await response.json();
+        onupdate?.(updatedIssue);
+        showCompleteModal = false;
+      } else {
+        const error = await response.json();
+        console.error('Failed to complete bead:', error);
+      }
+    } catch (err) {
+      console.error('Error completing bead:', err);
+    }
+  }
+
+  // Check if bead can be claimed (ready status)
+  let canClaim = $derived(issue?.status === 'ready');
+
+  // Check if bead can be completed (in_progress status)
+  let canComplete = $derived(issue?.status === 'in_progress');
 
   // Assignee update
   let isUpdatingAssignee = $state(false);
@@ -289,15 +376,26 @@
             <div class="header-actions">
               {#if !isEditing}
                 {#if issue.status !== 'closed'}
+                  {#if canClaim}
+                    <button class="claim-btn" onclick={openClaimModal} title="Claim this bead and start working">
+                      <Icon name="git-branch" size={16} />
+                      Claim
+                    </button>
+                  {:else if canComplete}
+                    <button class="complete-btn" onclick={openCompleteModal} title="Submit for review">
+                      <Icon name="check-circle" size={16} />
+                      Complete
+                    </button>
+                  {/if}
                   {#if isTaskRunning && activeRunId}
                     <button class="stop-btn" onclick={() => onstoptask?.(activeRunId)} title="Stop Task">
                       <Icon name="square" size={16} />
                       Stop
                     </button>
-                  {:else if onstarttask}
+                  {:else if onstarttask && issue.status === 'in_progress'}
                     <button class="start-btn" onclick={() => onstarttask?.(issue, 'autonomous')} title="Start Task">
                       <Icon name="play" size={16} />
-                      Start
+                      Run
                     </button>
                   {/if}
                   <button class="chat-btn" onclick={() => onchattask?.(issue)} title="Chat About Task">
@@ -534,6 +632,21 @@
   oncancel={cancelDelete}
 />
 
+<ClaimBeadModal
+  isOpen={showClaimModal}
+  issue={issue}
+  {agents}
+  onclose={closeClaimModal}
+  onclaim={handleClaim}
+/>
+
+<CompleteBeadModal
+  isOpen={showCompleteModal}
+  issue={issue}
+  onclose={closeCompleteModal}
+  oncomplete={handleComplete}
+/>
+
 <style>
   .sheet-overlay {
     position: fixed;
@@ -707,6 +820,38 @@
 
   .stop-btn:hover {
     background: #b91c1c;
+  }
+
+  .claim-btn,
+  .complete-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    border: none;
+    border-radius: 6px;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: 'Figtree', sans-serif;
+  }
+
+  .claim-btn {
+    background: #3b82f6;
+  }
+
+  .claim-btn:hover {
+    background: #2563eb;
+  }
+
+  .complete-btn {
+    background: #10b981;
+  }
+
+  .complete-btn:hover {
+    background: #059669;
   }
 
   .chat-btn {
