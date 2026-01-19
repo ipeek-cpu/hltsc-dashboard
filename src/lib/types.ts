@@ -46,6 +46,7 @@ export interface IssueWithDetails extends Issue {
   children: Issue[];
   parent: Issue | null;
   comments: Comment[];
+  events: Event[];
   childBlockingRelations?: BlockingRelation[]; // For graph visualization
 }
 

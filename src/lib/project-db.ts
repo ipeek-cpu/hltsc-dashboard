@@ -155,6 +155,21 @@ export function getCommentsForIssue(projectPath: string, issueId: string): Comme
 		.all(issueId) as Comment[];
 }
 
+export function getEventsForIssue(projectPath: string, issueId: string, limit = 50): Event[] {
+	const db = getProjectDb(projectPath);
+	return db
+		.prepare(
+			`
+		SELECT id, issue_id, event_type, actor, old_value, new_value, comment, created_at
+		FROM events
+		WHERE issue_id = ?
+		ORDER BY created_at DESC
+		LIMIT ?
+	`
+		)
+		.all(issueId, limit) as Event[];
+}
+
 export function getRecentEvents(projectPath: string, since?: string, limit = 100): Event[] {
 	const db = getProjectDb(projectPath);
 	if (since) {
@@ -474,6 +489,7 @@ export interface IssueWithDetails extends Issue {
 	children: Issue[];
 	parent: Issue | null;
 	comments: Comment[];
+	events: Event[];
 	childBlockingRelations?: BlockingRelation[]; // For graph visualization
 }
 
@@ -490,6 +506,7 @@ export function getIssueWithDetails(projectPath: string, issueId: string): Issue
 		children,
 		parent: getParentIssue(projectPath, issueId),
 		comments: getCommentsForIssue(projectPath, issueId),
+		events: getEventsForIssue(projectPath, issueId),
 		// Include blocking relations if this is an epic with children
 		childBlockingRelations:
 			issue.issue_type === 'epic' && children.length > 0

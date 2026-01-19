@@ -9,6 +9,7 @@
   import ClaimBeadModal from './ClaimBeadModal.svelte';
   import CompleteBeadModal from './CompleteBeadModal.svelte';
   import StatusDropdown from './StatusDropdown.svelte';
+  import ActivityTimeline from './ActivityTimeline.svelte';
   import { toasts } from '$lib/stores/toast-store';
   import type { BeadStatus } from '$lib/bead-lifecycle';
 
@@ -651,6 +652,8 @@
           {/if}
 
           <CommentThread comments={issue.comments} />
+
+          <ActivityTimeline events={issue.events || []} />
         </div>
       {:else}
         <div class="loading-state">
