@@ -60,6 +60,7 @@
 		projectId,
 		agent = null,
 		embedded = false,
+		darkTerminal = false,
 		livePreviewUrl = null,
 		selectedElement = null,
 		currentNavigationUrl = null,
@@ -70,6 +71,7 @@
 		projectId: string;
 		agent?: Agent | null;
 		embedded?: boolean;
+		darkTerminal?: boolean;
 		livePreviewUrl?: string | null;
 		selectedElement?: ElementSelectionData | null;
 		currentNavigationUrl?: string | null;
@@ -1325,8 +1327,8 @@ ${endPromptContent}`;
 				</div>
 			{:else}
 				<!-- Normal chat interface -->
-				<div class="messages-wrapper">
-					<div class="messages-container" bind:this={messagesContainer}>
+				<div class="messages-wrapper" class:dark-terminal={darkTerminal}>
+					<div class="messages-container" class:dark-terminal={darkTerminal} bind:this={messagesContainer}>
 						{#if messages.length === 0 && !claudeReady}
 							<!-- Claude is loading and no history -->
 							<div class="empty-state loading">
@@ -2092,11 +2094,27 @@ ${endPromptContent}`;
 		overflow: hidden;
 	}
 
+	.messages-wrapper.dark-terminal {
+		background: #0a0a0a;
+	}
+
 	.messages-container {
 		flex: 1;
 		overflow-y: auto;
 		padding: 16px;
 		padding-bottom: 24px;
+	}
+
+	.messages-container.dark-terminal {
+		background: #0a0a0a;
+	}
+
+	.messages-container.dark-terminal .empty-state {
+		color: #9ca3af;
+	}
+
+	.messages-container.dark-terminal .empty-state :global(svg) {
+		color: #4b5563;
 	}
 
 	.floating-todos {

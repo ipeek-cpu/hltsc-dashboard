@@ -1309,6 +1309,7 @@
 									projectId={$page.params.id}
 									agent={panel.agent}
 									embedded={true}
+									darkTerminal={true}
 								/>
 							</div>
 						{/each}
@@ -1927,24 +1928,6 @@
 		display: flex;
 		flex-direction: column;
 		width: 100% !important;
-	}
-
-	.chat-panel :global(.messages-wrapper) {
-		flex: 1;
-		background: #0a0a0a;
-	}
-
-	.chat-panel :global(.messages-container) {
-		background: #0a0a0a;
-	}
-
-	/* Style empty state for dark background */
-	.chat-panel :global(.empty-state) {
-		color: #9ca3af;
-	}
-
-	.chat-panel :global(.empty-state) :global(.icon) {
-		color: #4b5563;
 	}
 
 	.add-chat-btn {
