@@ -96,6 +96,13 @@
 	let showListView = $state(false);
 	let listViewFilters = $state<Partial<ListFilters> | null>(null);
 
+	// Side-by-side layout state
+	type LayoutMode = 'kanban' | 'chat' | 'split';
+	let layoutMode = $state<LayoutMode>('kanban');
+	let splitRatio = $state(60); // percentage for kanban pane
+	let isResizingSplit = $state(false);
+	let splitChatAgent = $state<Agent | null>(null);
+
 	// Bulk selection state
 	let selectionMode = $state(false);
 	let selectedIssueIds = $state<Set<string>>(new Set());
@@ -619,6 +626,88 @@
 		chatSheetOpen = true;
 	}
 
+	// Side-by-side layout functions
+	function cycleLayoutMode() {
+		if (layoutMode === 'kanban') {
+			layoutMode = 'split';
+			splitChatAgent = null;
+		} else if (layoutMode === 'split') {
+			layoutMode = 'chat';
+		} else {
+			layoutMode = 'kanban';
+		}
+		saveLayoutPreference();
+	}
+
+	function setLayoutMode(mode: LayoutMode) {
+		layoutMode = mode;
+		if (mode === 'split' || mode === 'chat') {
+			splitChatAgent = null;
+		}
+		saveLayoutPreference();
+	}
+
+	function saveLayoutPreference() {
+		if (browser) {
+			const projectId = $page.params.id;
+			localStorage.setItem(`beads-layout-${projectId}`, JSON.stringify({ mode: layoutMode, ratio: splitRatio }));
+		}
+	}
+
+	function loadLayoutPreference() {
+		if (browser) {
+			const projectId = $page.params.id;
+			const stored = localStorage.getItem(`beads-layout-${projectId}`);
+			if (stored) {
+				try {
+					const { mode, ratio } = JSON.parse(stored);
+					if (mode) layoutMode = mode;
+					if (ratio) splitRatio = ratio;
+				} catch (e) {
+					console.error('Failed to parse layout preference:', e);
+				}
+			}
+		}
+	}
+
+	// Split pane resize handlers
+	function startSplitResize(e: MouseEvent) {
+		isResizingSplit = true;
+		e.preventDefault();
+	}
+
+	function handleSplitResize(e: MouseEvent) {
+		if (!isResizingSplit) return;
+		const container = (e.currentTarget as HTMLElement).closest('.split-layout');
+		if (!container) return;
+		const rect = container.getBoundingClientRect();
+		const newRatio = ((e.clientX - rect.left) / rect.width) * 100;
+		// Enforce minimum widths (20% min for each pane)
+		splitRatio = Math.max(20, Math.min(80, newRatio));
+	}
+
+	function endSplitResize() {
+		if (isResizingSplit) {
+			isResizingSplit = false;
+			saveLayoutPreference();
+		}
+	}
+
+	// Keyboard shortcut for layout toggle (Cmd+/)
+	function handleKeydown(e: KeyboardEvent) {
+		if ((e.metaKey || e.ctrlKey) && e.key === '/') {
+			e.preventDefault();
+			cycleLayoutMode();
+		}
+	}
+
+	// Load layout preference on mount
+	$effect(() => {
+		if (browser) {
+			loadLayoutPreference();
+		}
+	});
+
 	// Planner chat - fetch/create planner agent and open chat
 	let plannerLoading = $state(false);
 	async function handlePlannerChat() {
@@ -932,6 +1021,8 @@
 	let visibleColumns = $derived(columns.filter(c => !hiddenColumns.has(c.status)));
 </script>
 
+<svelte:window onkeydown={handleKeydown} onmousemove={handleSplitResize} onmouseup={endSplitResize} />
+
 <svelte:head>
 	<title>{project?.name || 'Project'} - Beads Dashboard</title>
 </svelte:head>
@@ -1039,37 +1130,115 @@
 						{hiddenColumns}
 						onchange={handleColumnVisibilityChange}
 					/>
+					<div class="layout-toggle">
+						<button
+							class="layout-btn"
+							class:active={layoutMode === 'kanban'}
+							onclick={() => setLayoutMode('kanban')}
+							title="Kanban only"
+						>
+							<Icon name="columns" size={14} />
+						</button>
+						<button
+							class="layout-btn"
+							class:active={layoutMode === 'split'}
+							onclick={() => setLayoutMode('split')}
+							title="Split view (⌘/)"
+						>
+							<Icon name="layout" size={14} />
+						</button>
+						<button
+							class="layout-btn"
+							class:active={layoutMode === 'chat'}
+							onclick={() => setLayoutMode('chat')}
+							title="Chat only"
+						>
+							<Icon name="message-circle" size={14} />
+						</button>
+					</div>
 				</div>
 			</div>
 		{/if}
 
 		<main>
 			{#if activeTab === 'board'}
-				<div class="board-container">
-					<div class="kanban-board">
-						{#each visibleColumns as column (column.status)}
-							<KanbanColumn
-								title={column.title}
-								status={column.status}
-								issues={filteredIssues}
-								{recentlyChanged}
-								{selectionMode}
-								selectedIds={selectedIssueIds}
-								onissueclick={handleIssueClick}
-								ondrop={handleColumnDrop}
-								onselect={handleIssueSelect}
-							/>
-						{/each}
-					</div>
-
-					<aside>
-						<StaleBeadsPanel
-							{issues}
-							onissueclick={handleIssueClick}
+				{#if layoutMode === 'chat'}
+					<!-- Full chat mode -->
+					<div class="chat-full-container">
+						<ChatSheet
+							isOpen={true}
+							onclose={() => setLayoutMode('kanban')}
+							projectId={$page.params.id}
+							agent={splitChatAgent}
+							embedded={true}
 						/>
-						<EventFeed {events} />
-					</aside>
-				</div>
+					</div>
+				{:else if layoutMode === 'split'}
+					<!-- Split view: Kanban + Chat -->
+					<div class="split-layout" class:resizing={isResizingSplit}>
+						<div class="split-kanban" style="width: {splitRatio}%">
+							<div class="kanban-board">
+								{#each visibleColumns as column (column.status)}
+									<KanbanColumn
+										title={column.title}
+										status={column.status}
+										issues={filteredIssues}
+										{recentlyChanged}
+										{selectionMode}
+										selectedIds={selectedIssueIds}
+										onissueclick={handleIssueClick}
+										ondrop={handleColumnDrop}
+										onselect={handleIssueSelect}
+									/>
+								{/each}
+							</div>
+						</div>
+						<div
+							class="split-divider"
+							onmousedown={startSplitResize}
+							role="separator"
+							aria-orientation="vertical"
+						>
+							<div class="divider-handle"></div>
+						</div>
+						<div class="split-chat" style="width: {100 - splitRatio}%">
+							<ChatSheet
+								isOpen={true}
+								onclose={() => setLayoutMode('kanban')}
+								projectId={$page.params.id}
+								agent={splitChatAgent}
+								embedded={true}
+							/>
+						</div>
+					</div>
+				{:else}
+					<!-- Kanban only mode -->
+					<div class="board-container">
+						<div class="kanban-board">
+							{#each visibleColumns as column (column.status)}
+								<KanbanColumn
+									title={column.title}
+									status={column.status}
+									issues={filteredIssues}
+									{recentlyChanged}
+									{selectionMode}
+									selectedIds={selectedIssueIds}
+									onissueclick={handleIssueClick}
+									ondrop={handleColumnDrop}
+									onselect={handleIssueSelect}
+								/>
+							{/each}
+						</div>
+
+						<aside>
+							<StaleBeadsPanel
+								{issues}
+								onissueclick={handleIssueClick}
+							/>
+							<EventFeed {events} />
+						</aside>
+					</div>
+				{/if}
 			{:else if activeTab === 'epics'}
 				<div class="epics-container">
 					<EpicsView {issues} onissueclick={handleIssueClick} />
@@ -1717,6 +1886,115 @@
 
 	aside {
 		flex-shrink: 0;
+	}
+
+	/* Layout toggle buttons */
+	.layout-toggle {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		background: #f5f5f5;
+		border-radius: 6px;
+		padding: 2px;
+	}
+
+	.layout-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 26px;
+		background: transparent;
+		border: none;
+		border-radius: 4px;
+		color: #6b7280;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.layout-btn:hover {
+		background: #e5e7eb;
+		color: #374151;
+	}
+
+	.layout-btn.active {
+		background: #ffffff;
+		color: #2563eb;
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+	}
+
+	/* Split layout */
+	.split-layout {
+		flex: 1;
+		display: flex;
+		overflow: hidden;
+	}
+
+	.split-layout.resizing {
+		cursor: col-resize;
+		user-select: none;
+	}
+
+	.split-kanban {
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		min-width: 20%;
+	}
+
+	.split-kanban .kanban-board {
+		flex: 1;
+		padding: 12px 12px 12px 20px;
+	}
+
+	.split-divider {
+		width: 8px;
+		background: #f0f0f0;
+		cursor: col-resize;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		transition: background 0.15s ease;
+	}
+
+	.split-divider:hover {
+		background: #e5e7eb;
+	}
+
+	.split-layout.resizing .split-divider {
+		background: #3b82f6;
+	}
+
+	.divider-handle {
+		width: 4px;
+		height: 32px;
+		background: #d1d5db;
+		border-radius: 2px;
+	}
+
+	.split-divider:hover .divider-handle {
+		background: #9ca3af;
+	}
+
+	.split-layout.resizing .divider-handle {
+		background: #ffffff;
+	}
+
+	.split-chat {
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		min-width: 20%;
+		background: #ffffff;
+		border-left: 1px solid #e5e7eb;
+	}
+
+	/* Full chat mode */
+	.chat-full-container {
+		flex: 1;
+		display: flex;
+		overflow: hidden;
 	}
 
 	.list-view-overlay {
