@@ -116,7 +116,14 @@
   }
 
   function formatDate(dateStr: string): string {
-    const date = new Date(dateStr);
+    // Handle SQLite timestamps which may be stored in UTC without 'Z' suffix
+    // If no timezone indicator, assume UTC
+    let normalizedDateStr = dateStr;
+    if (!dateStr.includes('Z') && !dateStr.includes('+') && !dateStr.includes('-', 10)) {
+      // Replace space with T and add Z for UTC
+      normalizedDateStr = dateStr.replace(' ', 'T') + 'Z';
+    }
+    const date = new Date(normalizedDateStr);
     const now = new Date();
     const diff = now.getTime() - date.getTime();
 

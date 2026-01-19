@@ -35,7 +35,12 @@
   };
 
   function formatTime(dateStr: string): string {
-    const date = new Date(dateStr);
+    // Handle SQLite timestamps which may be stored in UTC without 'Z' suffix
+    let normalizedDateStr = dateStr;
+    if (!dateStr.includes('Z') && !dateStr.includes('+') && !dateStr.includes('-', 10)) {
+      normalizedDateStr = dateStr.replace(' ', 'T') + 'Z';
+    }
+    const date = new Date(normalizedDateStr);
     const now = new Date();
     const diff = now.getTime() - date.getTime();
     const seconds = Math.floor(diff / 1000);

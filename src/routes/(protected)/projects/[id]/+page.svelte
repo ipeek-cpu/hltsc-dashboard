@@ -819,15 +819,13 @@
 
 		// Filter by epic (show epic and its children)
 		if (boardFilter.epicId) {
-			// Get the epic and all issues that depend on it (children)
 			const epicId = boardFilter.epicId;
 			result = result.filter(i => {
 				// Include the epic itself
 				if (i.id === epicId) return true;
-				// For now, we'll need to check dependencies - this is a simplified version
-				// In practice, we'd need to fetch dependency data
-				// For now, just show all non-epic issues when an epic is selected
-				return i.issue_type !== 'epic';
+				// Include children - beads uses ID pattern: children have IDs like {epicId}.{number}
+				if (i.id.startsWith(epicId + '.')) return true;
+				return false;
 			});
 		}
 

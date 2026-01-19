@@ -19,11 +19,8 @@
 
   // Get child issues for each epic (for counting)
   function getEpicChildCount(epicId: string): number {
-    return issues.filter(i => {
-      // This is simplified - in reality we'd check dependencies table
-      // For now, we assume issues with the epic in their parent_id or similar
-      return i.id !== epicId && i.issue_type !== 'epic';
-    }).length;
+    // Beads uses ID pattern: children have IDs like {epicId}.{number}
+    return issues.filter(i => i.id.startsWith(epicId + '.')).length;
   }
 
   // Handle search with debounce
@@ -139,6 +136,7 @@
           <div class="dropdown-divider"></div>
 
           {#each epics as epic (epic.id)}
+            {@const childCount = getEpicChildCount(epic.id)}
             <button
               class="dropdown-item"
               class:active={filter.epicId === epic.id}
@@ -146,6 +144,7 @@
             >
               <span class="epic-color"></span>
               <span class="epic-name">{epic.title}</span>
+              <span class="epic-count">{childCount}</span>
               {#if filter.epicId === epic.id}
                 <Icon name="check" size={14} />
               {/if}
@@ -373,11 +372,31 @@
     color: #2563eb;
   }
 
-  .dropdown-item span:not(.color-dot):not(.epic-color) {
+  .dropdown-item span:not(.color-dot):not(.epic-color):not(.epic-count) {
     flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .epic-count {
+    flex-shrink: 0;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    background: #e5e7eb;
+    color: #6b7280;
+    font-size: 10px;
+    font-weight: 600;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .dropdown-item.active .epic-count {
+    background: #dbeafe;
+    color: #2563eb;
   }
 
   .dropdown-divider {
