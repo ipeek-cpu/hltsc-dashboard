@@ -26,6 +26,7 @@
 	import OrchestrationView from '../../../../components/OrchestrationView.svelte';
 	import PromptEditor from '../../../../components/PromptEditor.svelte';
 	import KnownIssuesPanel from '../../../../components/KnownIssuesPanel.svelte';
+	import ContextPacksPanel from '../../../../components/ContextPacksPanel.svelte';
 	import BeadsListView from '../../../../components/BeadsListView.svelte';
 	import PlanningView from '../../../../components/PlanningView.svelte';
 	import ExecutionView from '../../../../components/ExecutionView.svelte';
@@ -1278,6 +1279,15 @@
 							projectId={$page.params.id}
 							onupdate={fetchPrompts}
 						/>
+					</div>
+
+					<div class="settings-section">
+						<h2>Context Packs</h2>
+						<p class="settings-description">
+							Generate structured context packs from your codebase using CodeGraph.
+							Export as markdown to inject into Claude sessions for better code understanding.
+						</p>
+						<ContextPacksPanel projectId={$page.params.id} />
 					</div>
 				</div>
 			{/if}
