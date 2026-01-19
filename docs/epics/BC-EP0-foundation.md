@@ -99,17 +99,29 @@ Establish a solid foundation with clean git hygiene, reliable beads database syn
 ---
 
 ### BC-EP0-004: Create Data Repair Utility
-**Status**: Ready
+**Status**: Closed
 **Objective**: Provide a utility to fix common data corruption issues in existing beads.
 
 **Acceptance Criteria**:
-- [ ] `src/lib/data-repair.ts` module created
-- [ ] Fixes timestamps missing timezones (defaults to local timezone)
-- [ ] Converts legacy status values ("done" → "closed")
-- [ ] Normalizes assignee format (adds @ prefix if missing)
-- [ ] Generates repair report with all fixes applied
-- [ ] Settings page has "Repair Data" button
-- [ ] API endpoint: POST /api/projects/[id]/repair
+- [x] `src/lib/data-repair.ts` module created
+- [x] Fixes timestamps missing timezones (defaults to local timezone)
+- [x] Converts legacy status values ("done" → "closed")
+- [x] Normalizes assignee format (adds @ prefix if missing)
+- [x] Generates repair report with all fixes applied
+- [x] Settings page has "Repair Data" button
+- [x] API endpoint: POST /api/projects/[id]/repair
+
+**Completion Evidence**:
+- `src/lib/data-repair.ts` (400 lines) - complete repair module with:
+  - `repairTimestamps()` - adds timezone offset to naive timestamps
+  - `repairLegacyStatuses()` - converts done→closed, wip→in_progress, etc.
+  - `repairAssignees()` - normalizes assignee format with @ prefix
+  - `repairRequiredFields()` - sets defaults for missing required fields
+  - `repairAllIssues()` - orchestrates all repairs with dry-run support
+- `src/routes/api/projects/[id]/repair/+server.ts` - POST endpoint
+- `src/routes/settings/+page.svelte` - "Repair Data" button with full UI
+- `src/lib/__tests__/data-repair.test.ts` - 15 unit tests
+- All 164 tests passing
 
 **Dependencies**: BC-EP0-002
 
