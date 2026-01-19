@@ -1,8 +1,30 @@
 <script lang="ts">
 	import { marked } from 'marked';
+	import hljs from 'highlight.js';
+	// Import highlight.js GitHub theme (light, clean, works well with chat UI)
+	import 'highlight.js/styles/github.css';
 	import Icon from './Icon.svelte';
 	import ClaudeBashCommand from './ClaudeBashCommand.svelte';
 	import ToolDisplay from './ToolDisplay.svelte';
+
+	// Configure marked to use highlight.js for code blocks
+	marked.setOptions({
+		highlight: function(code: string, lang: string) {
+			if (lang && hljs.getLanguage(lang)) {
+				try {
+					return hljs.highlight(code, { language: lang }).value;
+				} catch {
+					// Fall through to auto-detection
+				}
+			}
+			// Auto-detect language if not specified or invalid
+			try {
+				return hljs.highlightAuto(code).value;
+			} catch {
+				return code;
+			}
+		}
+	});
 
 	interface ToolCall {
 		name: string;
@@ -274,14 +296,48 @@
 		border-radius: 8px;
 		overflow-x: auto;
 		font-size: 13px;
+		line-height: 1.5;
+	}
+
+	/* Code inside pre (syntax highlighted) - reset highlight.js background */
+	.message-content :global(pre code) {
+		padding: 0;
+		background: transparent;
+		font-size: inherit;
+	}
+
+	/* highlight.js language label (if shown) */
+	.message-content :global(pre code.hljs) {
+		padding: 0;
 	}
 
 	.user .message-content :global(pre) {
-		background: rgba(0, 0, 0, 0.2);
+		background: rgba(0, 0, 0, 0.3);
+	}
+
+	/* Override highlight.js colors for user messages (light text on dark bg) */
+	.user .message-content :global(pre code),
+	.user .message-content :global(pre .hljs) {
+		color: rgba(255, 255, 255, 0.95);
+	}
+	.user .message-content :global(pre .hljs-keyword),
+	.user .message-content :global(pre .hljs-selector-tag) {
+		color: #ff79c6;
+	}
+	.user .message-content :global(pre .hljs-string),
+	.user .message-content :global(pre .hljs-attr) {
+		color: #8be9fd;
+	}
+	.user .message-content :global(pre .hljs-number) {
+		color: #bd93f9;
+	}
+	.user .message-content :global(pre .hljs-comment) {
+		color: rgba(255, 255, 255, 0.5);
 	}
 
 	.assistant .message-content :global(pre) {
-		background: #f3f4f6;
+		background: #f6f8fa;
+		border: 1px solid #e1e4e8;
 	}
 
 	.message-content :global(ul),
