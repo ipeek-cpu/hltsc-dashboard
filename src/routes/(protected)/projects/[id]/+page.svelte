@@ -1868,7 +1868,7 @@
 		overflow: hidden;
 		border-right: 1px solid #e5e7eb;
 		min-height: 0;
-		min-width: 280px;
+		min-width: 0;
 		background: #ffffff;
 	}
 
@@ -1917,11 +1917,13 @@
 		color: #475569;
 	}
 
-	/* Ensure ChatSheet fills the panel */
+	/* Ensure ChatSheet fills the panel completely */
 	.chat-panel :global(.sheet-overlay) {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
+		height: 100%;
+		min-height: 0;
 	}
 
 	.chat-panel :global(.chat-sheet) {
@@ -1929,20 +1931,38 @@
 		display: flex;
 		flex-direction: column;
 		width: 100% !important;
+		height: 100%;
+		min-height: 0;
 	}
 
-	/* Only make the messages area (terminal) black */
-	.chat-panel :global(.messages-area) {
+	.chat-panel :global(.messages-wrapper) {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+		background: #0a0a0a;
+	}
+
+	.chat-panel :global(.messages-container) {
+		flex: 1;
+		min-height: 0;
 		background: #0a0a0a;
 	}
 
 	/* Style empty state for dark background */
 	.chat-panel :global(.empty-state) {
 		color: #9ca3af;
+		background: #0a0a0a;
 	}
 
-	.chat-panel :global(.empty-state-icon) {
+	.chat-panel :global(.empty-state) :global(.icon) {
 		color: #4b5563;
+	}
+
+	/* Floating todos on dark background */
+	.chat-panel :global(.floating-todos) {
+		background: #0a0a0a;
+		border-top-color: #333;
 	}
 
 	.add-chat-btn {
