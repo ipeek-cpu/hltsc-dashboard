@@ -197,15 +197,26 @@ Establish a solid foundation with clean git hygiene, reliable beads database syn
 ---
 
 ### BC-EP0-007: Add Health Check Endpoint
-**Status**: Ready
+**Status**: Closed
 **Objective**: Provide endpoint for monitoring system health.
 
 **Acceptance Criteria**:
-- [ ] GET /api/health returns health status
-- [ ] Checks: SQLite connection, SSE active, Claude CLI status
-- [ ] Returns structured JSON with component statuses
-- [ ] Returns 200 if healthy, 503 if degraded
-- [ ] Response time < 100ms
+- [x] GET /api/health returns health status
+- [x] Checks: SQLite connection, SSE active, Claude CLI status
+- [x] Returns structured JSON with component statuses
+- [x] Returns 200 if healthy, 503 if degraded
+- [x] Response time < 100ms
+
+**Completion Evidence**:
+- `/api/health` enhanced with comprehensive component checks:
+  - Database: connected, exists, walMode, dataVersion, error
+  - Claude CLI: installed, version, path, verification status
+  - SSE: active status (capability check)
+- Returns `components` object with detailed health per component
+- Returns `responseTime` in response body and X-Response-Time header
+- HTTP 200 for healthy, 503 for degraded/unhealthy
+- Cache-Control: no-cache to prevent stale health data
+- All 197 tests passing
 
 **Dependencies**: BC-EP0-005
 
