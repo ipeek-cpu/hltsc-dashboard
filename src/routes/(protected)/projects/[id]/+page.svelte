@@ -1921,28 +1921,40 @@
 	}
 
 	/* Ensure ChatSheet fills the panel completely */
-	.chat-panel :global(.sheet-overlay) {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		min-height: 0;
+	.chat-panel :global(.sheet-overlay),
+	.chat-panel :global(.sheet-overlay.embedded) {
+		flex: 1 !important;
+		display: flex !important;
+		flex-direction: column !important;
+		min-height: 0 !important;
+		height: unset !important;
+		position: relative !important;
 	}
 
-	.chat-panel :global(.chat-sheet) {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
+	.chat-panel :global(.chat-sheet),
+	.chat-panel :global(.chat-sheet.embedded) {
+		flex: 1 !important;
+		display: flex !important;
+		flex-direction: column !important;
 		width: 100% !important;
-		min-height: 0;
+		min-height: 0 !important;
+		height: unset !important;
+		position: relative !important;
 	}
 
 	.chat-panel :global(.messages-wrapper) {
-		flex: 1;
-		min-height: 0;
+		flex: 1 !important;
+		min-height: 0 !important;
+		overflow: hidden !important;
+	}
+
+	.chat-panel :global(.messages-container) {
+		flex: 1 !important;
+		min-height: 0 !important;
 	}
 
 	.chat-panel :global(.chat-input-container) {
-		flex-shrink: 0;
+		flex-shrink: 0 !important;
 	}
 
 	.add-chat-btn {
