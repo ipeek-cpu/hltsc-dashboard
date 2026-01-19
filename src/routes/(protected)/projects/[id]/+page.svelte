@@ -690,7 +690,7 @@
 		if (!isResizingSidebar) return;
 		const newWidth = window.innerWidth - e.clientX;
 		// Min 300px, max 800px
-		chatSidebarWidth = Math.max(300, Math.min(window.innerWidth * 0.6, newWidth));
+		chatSidebarWidth = Math.max(300, Math.min(window.innerWidth * 0.8, newWidth));
 	}
 
 	function endSidebarResize() {
@@ -1849,27 +1849,29 @@
 		border-left: 1px solid #e5e7eb;
 		overflow: hidden;
 		min-width: 300px;
-		max-width: 60vw;
+		max-width: 80vw;
 		height: 100%;
 	}
 
 	.chat-panels {
-		flex: 1;
+		flex: 1 1 0;
 		display: flex;
 		flex-direction: row;
 		overflow: hidden;
 		min-height: 0;
+		height: 100%;
 	}
 
 	.chat-panel {
-		flex: 1;
+		flex: 1 1 0;
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
 		border-right: 1px solid #e5e7eb;
 		min-height: 0;
 		min-width: 0;
-		background: #ffffff;
+		background: #f9fafb;
+		height: 100%;
 	}
 
 	.chat-panel.single {
@@ -1919,40 +1921,49 @@
 
 	/* Ensure ChatSheet fills the panel completely */
 	.chat-panel :global(.sheet-overlay) {
-		flex: 1;
+		flex: 1 1 0;
 		display: flex;
 		flex-direction: column;
 		height: 100%;
 		min-height: 0;
+		overflow: hidden;
 	}
 
 	.chat-panel :global(.chat-sheet) {
-		flex: 1;
+		flex: 1 1 0;
 		display: flex;
 		flex-direction: column;
 		width: 100% !important;
-		height: 100%;
+		height: 100% !important;
 		min-height: 0;
+		overflow: hidden;
+	}
+
+	.chat-panel :global(.sheet-header) {
+		flex-shrink: 0;
 	}
 
 	.chat-panel :global(.messages-wrapper) {
-		flex: 1;
+		flex: 1 1 0;
 		display: flex;
 		flex-direction: column;
 		min-height: 0;
 		background: #0a0a0a;
+		overflow: hidden;
 	}
 
 	.chat-panel :global(.messages-container) {
-		flex: 1;
+		flex: 1 1 0;
 		min-height: 0;
 		background: #0a0a0a;
+		overflow-y: auto;
 	}
 
 	/* Style empty state for dark background */
 	.chat-panel :global(.empty-state) {
 		color: #9ca3af;
 		background: #0a0a0a;
+		height: 100%;
 	}
 
 	.chat-panel :global(.empty-state) :global(.icon) {
@@ -1963,6 +1974,17 @@
 	.chat-panel :global(.floating-todos) {
 		background: #0a0a0a;
 		border-top-color: #333;
+	}
+
+	/* Chat input area - ensure it doesn't leave gaps */
+	.chat-panel :global(.chat-input-container) {
+		flex-shrink: 0;
+		background: #f9fafb;
+	}
+
+	/* SessionMetricsBar */
+	.chat-panel :global(.session-metrics-bar) {
+		flex-shrink: 0;
 	}
 
 	.add-chat-btn {
