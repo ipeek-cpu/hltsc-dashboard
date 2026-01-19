@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getDatabaseHealth, type DatabaseHealth } from '$lib/db';
 import { getClaudePath, verifyClaudeCli } from '$lib/settings';
+import { getConnectionStats } from '$lib/sse-manager';
 
 /**
  * Component health status
@@ -25,6 +26,9 @@ interface ClaudeHealth extends ComponentHealth {
  */
 interface SseHealth extends ComponentHealth {
 	active: boolean;
+	totalConnections: number;
+	activeConnections: number;
+	staleConnections: number;
 }
 
 /**
@@ -76,15 +80,17 @@ function getClaudeHealth(): ClaudeHealth {
 }
 
 /**
- * Check SSE health
- * Note: SSE is stateless on the server side, so we just verify the capability is available
+ * Check SSE health with connection statistics
  */
 function getSseHealth(): SseHealth {
-	// SSE is always available if the server is running
-	// Future: Could track active connection count
+	const stats = getConnectionStats();
+
 	return {
 		healthy: true,
-		active: true
+		active: true,
+		totalConnections: stats.totalConnections,
+		activeConnections: stats.activeConnections,
+		staleConnections: stats.staleConnections
 	};
 }
 
