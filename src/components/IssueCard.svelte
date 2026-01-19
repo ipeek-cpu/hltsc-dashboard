@@ -16,15 +16,52 @@
     agentScope: 'global' | 'project';
   }
 
-  let { issue, isNew = false, acceptAgentDrop = false, onclick, onagentdrop }: {
+  // Data transferred when dragging an issue between columns
+  export interface IssueDragData {
+    type: 'issue';
+    issueId: string;
+    currentStatus: string;
+  }
+
+  let { issue, isNew = false, acceptAgentDrop = false, draggable = true, onclick, onagentdrop }: {
     issue: Issue;
     isNew?: boolean;
     acceptAgentDrop?: boolean;
+    draggable?: boolean;
     onclick?: (issueId: string) => void;
     onagentdrop?: (issueId: string, agentData: AgentDropData) => void;
   } = $props();
 
   let isDragOver = $state(false);
+  let isDragging = $state(false);
+
+  // Handle drag start - set issue data for column drops
+  function handleDragStart(event: DragEvent) {
+    if (!event.dataTransfer || !draggable) return;
+
+    isDragging = true;
+
+    const dragData: IssueDragData = {
+      type: 'issue',
+      issueId: issue.id,
+      currentStatus: issue.status
+    };
+
+    event.dataTransfer.setData('application/json', JSON.stringify(dragData));
+    event.dataTransfer.effectAllowed = 'move';
+
+    // Broadcast drag start event so columns can validate drop zones
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('issuedragstart', {
+        detail: { fromStatus: issue.status }
+      }));
+    }
+  }
+
+  // Handle drag end
+  function handleDragEnd() {
+    isDragging = false;
+  }
 
   // Calculate staleness for this issue
   let staleness = $derived(calculateStaleness(issue.status, issue.updated_at));
@@ -141,7 +178,11 @@
   class:is-stale-critical={staleness.level === 'critical'}
   class:is-drop-target={acceptAgentDrop}
   class:is-drag-over={isDragOver}
+  class:is-dragging={isDragging}
+  draggable={draggable}
   onclick={handleClick}
+  ondragstart={handleDragStart}
+  ondragend={handleDragEnd}
   ondragover={handleDragOver}
   ondragleave={handleDragLeave}
   ondrop={handleDrop}
@@ -453,5 +494,20 @@
     border-radius: 12px;
     background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0.05) 100%);
     pointer-events: none;
+  }
+
+  /* Dragging styles */
+  .issue-card.is-dragging {
+    opacity: 0.5;
+    cursor: grabbing;
+    transform: scale(0.98);
+  }
+
+  .issue-card[draggable="true"] {
+    cursor: grab;
+  }
+
+  .issue-card[draggable="true"]:active {
+    cursor: grabbing;
   }
 </style>

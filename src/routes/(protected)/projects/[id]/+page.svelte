@@ -4,8 +4,12 @@
 	import type { Issue, Event, StreamMessage, ProjectInfo, IssueWithDetails, Agent, BoardFilter } from '$lib/types';
 	import type { SessionPrompt } from '$lib/prompt-types';
 	import type { KnownIssue } from '$lib/session-context-types';
-	import KanbanColumn from '../../../../components/KanbanColumn.svelte';
+	import KanbanColumn, { type ColumnDropData } from '../../../../components/KanbanColumn.svelte';
 	import EventFeed from '../../../../components/EventFeed.svelte';
+	import ClaimBeadModal from '../../../../components/ClaimBeadModal.svelte';
+	import CompleteBeadModal from '../../../../components/CompleteBeadModal.svelte';
+	import { toasts } from '$lib/stores/toast-store';
+	import { isValidTransition, transitionRequiresModal, type BeadStatus } from '$lib/bead-lifecycle';
 	import TabSwitcher from '../../../../components/TabSwitcher.svelte';
 	import EpicsView from '../../../../components/EpicsView.svelte';
 	import IssueDetailSheet from '../../../../components/IssueDetailSheet.svelte';
@@ -91,6 +95,132 @@
 	// Git status for unsaved changes banner
 	let hasUnsavedChanges = $state(false);
 	let unsavedChangeCount = $state(0);
+
+	// Drag-and-drop modal state
+	let showClaimModal = $state(false);
+	let showCompleteModal = $state(false);
+	let dragDropIssue = $state<Issue | null>(null);
+
+	// Handle column drop - validate transition and either open modal or update directly
+	async function handleColumnDrop(data: ColumnDropData) {
+		const { issueId, fromStatus, toStatus } = data;
+		const projectId = $page.params.id;
+
+		// Find the issue
+		const issue = issues.find(i => i.id === issueId);
+		if (!issue) {
+			toasts.error('Issue not found');
+			return;
+		}
+
+		// Validate transition
+		if (!isValidTransition(fromStatus as BeadStatus, toStatus as BeadStatus)) {
+			toasts.error(`Cannot move from ${fromStatus} to ${toStatus}`);
+			return;
+		}
+
+		// Check if transition requires a modal
+		if (transitionRequiresModal(fromStatus as BeadStatus, toStatus as BeadStatus)) {
+			dragDropIssue = issue;
+
+			if (toStatus === 'in_progress') {
+				// ready → in_progress requires ClaimBeadModal
+				showClaimModal = true;
+			} else if (toStatus === 'in_review') {
+				// in_progress → in_review requires CompleteBeadModal
+				showCompleteModal = true;
+			}
+			return;
+		}
+
+		// Simple transition - update directly
+		try {
+			const response = await fetch(`/api/projects/${projectId}/issues/${issueId}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ status: toStatus })
+			});
+
+			if (response.ok) {
+				toasts.success(`Moved to ${toStatus.replace('_', ' ')}`);
+			} else {
+				const error = await response.json();
+				toasts.error(error.error || 'Failed to update status');
+			}
+		} catch (err) {
+			console.error('Error updating issue status:', err);
+			toasts.error('Failed to update status');
+		}
+	}
+
+	// Handle claim from drag-drop modal
+	async function handleDragDropClaim(data: { branch_name: string; agent_id: string }) {
+		if (!dragDropIssue) return;
+		const projectId = $page.params.id;
+
+		try {
+			const response = await fetch(`/api/projects/${projectId}/issues/${dragDropIssue.id}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					status: 'in_progress',
+					branch_name: data.branch_name,
+					assignee: data.agent_id,
+					agent_id: data.agent_id
+				})
+			});
+
+			if (response.ok) {
+				toasts.success('Bead claimed successfully');
+				showClaimModal = false;
+				dragDropIssue = null;
+			} else {
+				const error = await response.json();
+				toasts.error(error.error || 'Failed to claim bead');
+			}
+		} catch (err) {
+			console.error('Error claiming bead:', err);
+			toasts.error('Failed to claim bead');
+		}
+	}
+
+	// Handle complete from drag-drop modal
+	async function handleDragDropComplete(data: { commit_hash: string; execution_log: string; pr_url?: string }) {
+		if (!dragDropIssue) return;
+		const projectId = $page.params.id;
+
+		try {
+			const response = await fetch(`/api/projects/${projectId}/issues/${dragDropIssue.id}`, {
+				method: 'PATCH',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					status: 'in_review',
+					commit_hash: data.commit_hash,
+					execution_log: data.execution_log,
+					pr_url: data.pr_url
+				})
+			});
+
+			if (response.ok) {
+				toasts.success('Submitted for review');
+				showCompleteModal = false;
+				dragDropIssue = null;
+			} else {
+				const error = await response.json();
+				toasts.error(error.error || 'Failed to submit for review');
+			}
+		} catch (err) {
+			console.error('Error completing bead:', err);
+			toasts.error('Failed to submit for review');
+		}
+	}
+
+	// Close drag-drop modals
+	function closeDragDropModals() {
+		showClaimModal = false;
+		showCompleteModal = false;
+		dragDropIssue = null;
+	}
 
 	const columns = [
 		{ title: 'Open', status: 'open' },
@@ -772,6 +902,7 @@
 								issues={filteredIssues}
 								{recentlyChanged}
 								onissueclick={handleIssueClick}
+								ondrop={handleColumnDrop}
 							/>
 						{/each}
 					</div>
@@ -931,6 +1062,26 @@
 		projectName={project?.name || 'Project'}
 		onclose={handleLiveEditClose}
 	/>
+
+	<!-- Drag-and-drop workflow modals -->
+	{#if showClaimModal && dragDropIssue}
+		<ClaimBeadModal
+			isOpen={true}
+			issue={dragDropIssue}
+			{agents}
+			onclaim={handleDragDropClaim}
+			onclose={closeDragDropModals}
+		/>
+	{/if}
+
+	{#if showCompleteModal && dragDropIssue}
+		<CompleteBeadModal
+			isOpen={true}
+			issue={dragDropIssue}
+			oncomplete={handleDragDropComplete}
+			onclose={closeDragDropModals}
+		/>
+	{/if}
 
 	{#if showListView}
 		<div class="list-view-overlay">

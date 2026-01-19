@@ -4,6 +4,7 @@
 	import GlobalTaskIndicator from '../components/GlobalTaskIndicator.svelte';
 	import NotificationListener from '../components/NotificationListener.svelte';
 	import ErrorBoundary from '../components/ErrorBoundary.svelte';
+	import Toast from '../components/Toast.svelte';
 
 	let { children }: { children: Snippet } = $props();
 
@@ -59,3 +60,5 @@
 		{@render children()}
 	{/snippet}
 </ErrorBoundary>
+
+<Toast />
