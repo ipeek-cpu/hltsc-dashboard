@@ -96,12 +96,15 @@
 	let showListView = $state(false);
 	let listViewFilters = $state<Partial<ListFilters> | null>(null);
 
-	// Side-by-side layout state
-	type LayoutMode = 'kanban' | 'chat' | 'split';
-	let layoutMode = $state<LayoutMode>('kanban');
-	let splitRatio = $state(60); // percentage for kanban pane
-	let isResizingSplit = $state(false);
-	let splitChatAgent = $state<Agent | null>(null);
+	// Side-by-side layout state - chat sidebar persists across all tabs
+	type ChatPanel = {
+		id: string;
+		agent: Agent | null;
+	};
+	let chatPanels = $state<ChatPanel[]>([]); // Up to 2 chat panels
+	let chatSidebarWidth = $state(400); // Width of chat sidebar in pixels
+	let isResizingSidebar = $state(false);
+	let showChatSidebar = $derived(chatPanels.length > 0);
 
 	// Bulk selection state
 	let selectionMode = $state(false);
@@ -626,85 +629,89 @@
 		chatSheetOpen = true;
 	}
 
-	// Side-by-side layout functions
-	function cycleLayoutMode() {
-		if (layoutMode === 'kanban') {
-			layoutMode = 'split';
-			splitChatAgent = null;
-		} else if (layoutMode === 'split') {
-			layoutMode = 'chat';
+	// Chat sidebar functions - persistent across all tabs
+	function openChatPanel(agent: Agent | null = null) {
+		// Max 2 panels
+		if (chatPanels.length >= 2) return;
+		const newPanel: ChatPanel = {
+			id: crypto.randomUUID(),
+			agent
+		};
+		chatPanels = [...chatPanels, newPanel];
+		saveChatPreference();
+	}
+
+	function closeChatPanel(panelId: string) {
+		chatPanels = chatPanels.filter(p => p.id !== panelId);
+		saveChatPreference();
+	}
+
+	function toggleChatSidebar() {
+		if (chatPanels.length === 0) {
+			openChatPanel(null); // Open general assistant
 		} else {
-			layoutMode = 'kanban';
+			chatPanels = []; // Close all panels
 		}
-		saveLayoutPreference();
+		saveChatPreference();
 	}
 
-	function setLayoutMode(mode: LayoutMode) {
-		layoutMode = mode;
-		if (mode === 'split' || mode === 'chat') {
-			splitChatAgent = null;
-		}
-		saveLayoutPreference();
-	}
-
-	function saveLayoutPreference() {
+	function saveChatPreference() {
 		if (browser) {
 			const projectId = $page.params.id;
-			localStorage.setItem(`beads-layout-${projectId}`, JSON.stringify({ mode: layoutMode, ratio: splitRatio }));
+			localStorage.setItem(`beads-chat-${projectId}`, JSON.stringify({
+				width: chatSidebarWidth,
+				panelCount: chatPanels.length
+			}));
 		}
 	}
 
-	function loadLayoutPreference() {
+	function loadChatPreference() {
 		if (browser) {
 			const projectId = $page.params.id;
-			const stored = localStorage.getItem(`beads-layout-${projectId}`);
+			const stored = localStorage.getItem(`beads-chat-${projectId}`);
 			if (stored) {
 				try {
-					const { mode, ratio } = JSON.parse(stored);
-					if (mode) layoutMode = mode;
-					if (ratio) splitRatio = ratio;
+					const { width } = JSON.parse(stored);
+					if (width) chatSidebarWidth = width;
 				} catch (e) {
-					console.error('Failed to parse layout preference:', e);
+					console.error('Failed to parse chat preference:', e);
 				}
 			}
 		}
 	}
 
-	// Split pane resize handlers
-	function startSplitResize(e: MouseEvent) {
-		isResizingSplit = true;
+	// Sidebar resize handlers
+	function startSidebarResize(e: MouseEvent) {
+		isResizingSidebar = true;
 		e.preventDefault();
 	}
 
-	function handleSplitResize(e: MouseEvent) {
-		if (!isResizingSplit) return;
-		const container = (e.currentTarget as HTMLElement).closest('.split-layout');
-		if (!container) return;
-		const rect = container.getBoundingClientRect();
-		const newRatio = ((e.clientX - rect.left) / rect.width) * 100;
-		// Enforce minimum widths (20% min for each pane)
-		splitRatio = Math.max(20, Math.min(80, newRatio));
+	function handleSidebarResize(e: MouseEvent) {
+		if (!isResizingSidebar) return;
+		const newWidth = window.innerWidth - e.clientX;
+		// Min 300px, max 800px
+		chatSidebarWidth = Math.max(300, Math.min(800, newWidth));
 	}
 
-	function endSplitResize() {
-		if (isResizingSplit) {
-			isResizingSplit = false;
-			saveLayoutPreference();
+	function endSidebarResize() {
+		if (isResizingSidebar) {
+			isResizingSidebar = false;
+			saveChatPreference();
 		}
 	}
 
-	// Keyboard shortcut for layout toggle (Cmd+/)
+	// Keyboard shortcut for chat toggle (Cmd+/)
 	function handleKeydown(e: KeyboardEvent) {
 		if ((e.metaKey || e.ctrlKey) && e.key === '/') {
 			e.preventDefault();
-			cycleLayoutMode();
+			toggleChatSidebar();
 		}
 	}
 
-	// Load layout preference on mount
+	// Load chat preference on mount
 	$effect(() => {
 		if (browser) {
-			loadLayoutPreference();
+			loadChatPreference();
 		}
 	});
 
@@ -1021,7 +1028,7 @@
 	let visibleColumns = $derived(columns.filter(c => !hiddenColumns.has(c.status)));
 </script>
 
-<svelte:window onkeydown={handleKeydown} onmousemove={handleSplitResize} onmouseup={endSplitResize} />
+<svelte:window onkeydown={handleKeydown} onmousemove={handleSidebarResize} onmouseup={endSidebarResize} />
 
 <svelte:head>
 	<title>{project?.name || 'Project'} - Beads Dashboard</title>
@@ -1130,89 +1137,23 @@
 						{hiddenColumns}
 						onchange={handleColumnVisibilityChange}
 					/>
-					<div class="layout-toggle">
-						<button
-							class="layout-btn"
-							class:active={layoutMode === 'kanban'}
-							onclick={() => setLayoutMode('kanban')}
-							title="Kanban only"
-						>
-							<Icon name="columns" size={14} />
-						</button>
-						<button
-							class="layout-btn"
-							class:active={layoutMode === 'split'}
-							onclick={() => setLayoutMode('split')}
-							title="Split view (⌘/)"
-						>
-							<Icon name="layout" size={14} />
-						</button>
-						<button
-							class="layout-btn"
-							class:active={layoutMode === 'chat'}
-							onclick={() => setLayoutMode('chat')}
-							title="Chat only"
-						>
-							<Icon name="message-circle" size={14} />
-						</button>
-					</div>
+					<button
+						class="toolbar-btn chat-toggle"
+						class:active={showChatSidebar}
+						onclick={toggleChatSidebar}
+						title="Toggle chat sidebar (⌘/)"
+					>
+						<Icon name="message-circle" size={14} />
+						{showChatSidebar ? 'Hide Chat' : 'Chat'}
+					</button>
 				</div>
 			</div>
 		{/if}
 
-		<main>
-			{#if activeTab === 'board'}
-				{#if layoutMode === 'chat'}
-					<!-- Full chat mode -->
-					<div class="chat-full-container">
-						<ChatSheet
-							isOpen={true}
-							onclose={() => setLayoutMode('kanban')}
-							projectId={$page.params.id}
-							agent={splitChatAgent}
-							embedded={true}
-						/>
-					</div>
-				{:else if layoutMode === 'split'}
-					<!-- Split view: Kanban + Chat -->
-					<div class="split-layout" class:resizing={isResizingSplit}>
-						<div class="split-kanban" style="width: {splitRatio}%">
-							<div class="kanban-board">
-								{#each visibleColumns as column (column.status)}
-									<KanbanColumn
-										title={column.title}
-										status={column.status}
-										issues={filteredIssues}
-										{recentlyChanged}
-										{selectionMode}
-										selectedIds={selectedIssueIds}
-										onissueclick={handleIssueClick}
-										ondrop={handleColumnDrop}
-										onselect={handleIssueSelect}
-									/>
-								{/each}
-							</div>
-						</div>
-						<div
-							class="split-divider"
-							onmousedown={startSplitResize}
-							role="separator"
-							aria-orientation="vertical"
-						>
-							<div class="divider-handle"></div>
-						</div>
-						<div class="split-chat" style="width: {100 - splitRatio}%">
-							<ChatSheet
-								isOpen={true}
-								onclose={() => setLayoutMode('kanban')}
-								projectId={$page.params.id}
-								agent={splitChatAgent}
-								embedded={true}
-							/>
-						</div>
-					</div>
-				{:else}
-					<!-- Kanban only mode -->
+		<main class="main-layout" class:with-sidebar={showChatSidebar} class:resizing={isResizingSidebar}>
+			<!-- Content area - all tabs render here -->
+			<div class="content-area">
+				{#if activeTab === 'board'}
 					<div class="board-container">
 						<div class="kanban-board">
 							{#each visibleColumns as column (column.status)}
@@ -1238,8 +1179,7 @@
 							<EventFeed {events} />
 						</aside>
 					</div>
-				{/if}
-			{:else if activeTab === 'epics'}
+				{:else if activeTab === 'epics'}
 				<div class="epics-container">
 					<EpicsView {issues} onissueclick={handleIssueClick} />
 				</div>
@@ -1339,6 +1279,40 @@
 							onupdate={fetchPrompts}
 						/>
 					</div>
+				</div>
+			{/if}
+			</div>
+
+			<!-- Chat sidebar - persists across all tabs -->
+			{#if showChatSidebar}
+				<div
+					class="sidebar-divider"
+					onmousedown={startSidebarResize}
+					role="separator"
+					aria-orientation="vertical"
+				>
+					<div class="divider-handle"></div>
+				</div>
+				<div class="chat-sidebar" style="width: {chatSidebarWidth}px">
+					<div class="chat-panels">
+						{#each chatPanels as panel (panel.id)}
+							<div class="chat-panel" class:single={chatPanels.length === 1}>
+								<ChatSheet
+									isOpen={true}
+									onclose={() => closeChatPanel(panel.id)}
+									projectId={$page.params.id}
+									agent={panel.agent}
+									embedded={true}
+								/>
+							</div>
+						{/each}
+					</div>
+					{#if chatPanels.length < 2}
+						<button class="add-chat-btn" onclick={() => openChatPanel(null)} title="Open another chat">
+							<Icon name="plus" size={14} />
+							Add Chat
+						</button>
+					{/if}
 				</div>
 			{/if}
 		</main>
@@ -1799,9 +1773,121 @@
 	main {
 		flex: 1;
 		display: flex;
-		overflow-x: auto;
-		overflow-y: auto;
+		overflow: hidden;
 		background: #fafafa;
+	}
+
+	.main-layout {
+		flex: 1;
+		display: flex;
+		overflow: hidden;
+	}
+
+	.main-layout.resizing {
+		cursor: col-resize;
+		user-select: none;
+	}
+
+	.content-area {
+		flex: 1;
+		display: flex;
+		overflow: auto;
+		min-width: 0;
+	}
+
+	/* Chat sidebar */
+	.sidebar-divider {
+		width: 6px;
+		background: #e5e7eb;
+		cursor: col-resize;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		transition: background 0.15s ease;
+	}
+
+	.sidebar-divider:hover {
+		background: #d1d5db;
+	}
+
+	.main-layout.resizing .sidebar-divider {
+		background: #3b82f6;
+	}
+
+	.sidebar-divider .divider-handle {
+		width: 3px;
+		height: 40px;
+		background: #9ca3af;
+		border-radius: 2px;
+	}
+
+	.sidebar-divider:hover .divider-handle {
+		background: #6b7280;
+	}
+
+	.main-layout.resizing .sidebar-divider .divider-handle {
+		background: #ffffff;
+	}
+
+	.chat-sidebar {
+		display: flex;
+		flex-direction: column;
+		background: #ffffff;
+		border-left: 1px solid #e5e7eb;
+		overflow: hidden;
+		min-width: 300px;
+		max-width: 800px;
+	}
+
+	.chat-panels {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
+	.chat-panel {
+		flex: 1;
+		display: flex;
+		overflow: hidden;
+		border-bottom: 1px solid #e5e7eb;
+	}
+
+	.chat-panel.single {
+		border-bottom: none;
+	}
+
+	.chat-panel:last-child {
+		border-bottom: none;
+	}
+
+	.add-chat-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		padding: 10px;
+		background: #f9fafb;
+		border: none;
+		border-top: 1px solid #e5e7eb;
+		color: #6b7280;
+		font-size: 12px;
+		font-weight: 500;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		font-family: 'Figtree', sans-serif;
+	}
+
+	.add-chat-btn:hover {
+		background: #f3f4f6;
+		color: #374151;
+	}
+
+	.chat-toggle.active {
+		background: #dbeafe;
+		border-color: #93c5fd;
+		color: #1d4ed8;
 	}
 
 	.board-container {
@@ -1886,115 +1972,6 @@
 
 	aside {
 		flex-shrink: 0;
-	}
-
-	/* Layout toggle buttons */
-	.layout-toggle {
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		background: #f5f5f5;
-		border-radius: 6px;
-		padding: 2px;
-	}
-
-	.layout-btn {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 28px;
-		height: 26px;
-		background: transparent;
-		border: none;
-		border-radius: 4px;
-		color: #6b7280;
-		cursor: pointer;
-		transition: all 0.15s ease;
-	}
-
-	.layout-btn:hover {
-		background: #e5e7eb;
-		color: #374151;
-	}
-
-	.layout-btn.active {
-		background: #ffffff;
-		color: #2563eb;
-		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-	}
-
-	/* Split layout */
-	.split-layout {
-		flex: 1;
-		display: flex;
-		overflow: hidden;
-	}
-
-	.split-layout.resizing {
-		cursor: col-resize;
-		user-select: none;
-	}
-
-	.split-kanban {
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-		min-width: 20%;
-	}
-
-	.split-kanban .kanban-board {
-		flex: 1;
-		padding: 12px 12px 12px 20px;
-	}
-
-	.split-divider {
-		width: 8px;
-		background: #f0f0f0;
-		cursor: col-resize;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		flex-shrink: 0;
-		transition: background 0.15s ease;
-	}
-
-	.split-divider:hover {
-		background: #e5e7eb;
-	}
-
-	.split-layout.resizing .split-divider {
-		background: #3b82f6;
-	}
-
-	.divider-handle {
-		width: 4px;
-		height: 32px;
-		background: #d1d5db;
-		border-radius: 2px;
-	}
-
-	.split-divider:hover .divider-handle {
-		background: #9ca3af;
-	}
-
-	.split-layout.resizing .divider-handle {
-		background: #ffffff;
-	}
-
-	.split-chat {
-		display: flex;
-		flex-direction: column;
-		overflow: hidden;
-		min-width: 20%;
-		background: #ffffff;
-		border-left: 1px solid #e5e7eb;
-	}
-
-	/* Full chat mode */
-	.chat-full-container {
-		flex: 1;
-		display: flex;
-		overflow: hidden;
 	}
 
 	.list-view-overlay {
