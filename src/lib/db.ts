@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 
-const BEADS_DB_PATH = path.resolve(process.cwd(), '../.beads/beads.db');
+const BEADS_DB_PATH = path.resolve(process.cwd(), '.beads/beads.db');
 
 let db: Database.Database | null = null;
 

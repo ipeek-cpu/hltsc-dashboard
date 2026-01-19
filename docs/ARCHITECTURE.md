@@ -229,6 +229,61 @@ The app reads from `.beads/beads.db` (SQLite). Key tables:
 
 ---
 
+## Core Module Strategy
+
+### Current State
+
+The `src/lib/` directory contains 43 TypeScript modules with no clear separation between:
+
+| Category | Files | Purpose |
+|----------|-------|---------|
+| Database | `db.ts`, `project-db.ts`, `dashboard-db.ts` | SQLite access |
+| Claude Integration | `claude-cli.ts`, `claude-auth.ts`, `claude-code-manager.ts`, `chat-manager.ts` | CLI wrapper, auth, session management |
+| Beads Domain | `beads-manager.ts`, `beads-cli.ts`, `bead-validation.ts`, `bead-lifecycle.ts` | Bead operations |
+| Session/State | `session-store.ts`, `session-context.ts`, `session-metrics.ts` | Session management |
+| Agent System | `agents.ts`, `agent-activity-store.ts` | Agent parsing, activity tracking |
+| Task Runner | `task-runner-store.ts`, `task-runner-manager.ts`, `active-tasks-store.ts` | Task execution |
+| Infrastructure | `node-manager.ts`, `dev-server-manager.ts`, `scaffold-manager.ts` | Tool management |
+| Utilities | `types.ts`, `settings.ts`, `data-repair.ts`, `stale-detection.ts`, `git-utils.ts` | Shared utilities |
+
+### Proposed Core Module Location
+
+```
+src/lib/core/
+├── validation/
+│   ├── bead-validator.ts      # State transition rules, field validation
+│   ├── timestamp-validator.ts # ISO8601 with timezone enforcement
+│   └── schema.ts              # Zod/Valibot schemas
+├── state-machine/
+│   ├── bead-states.ts         # State definitions and transitions
+│   └── session-states.ts      # Session lifecycle states
+├── types/
+│   ├── bead.ts                # Bead domain types
+│   ├── session.ts             # Session domain types
+│   └── agent.ts               # Agent domain types
+└── index.ts                   # Public API
+```
+
+### Design Principles for Core
+
+1. **No I/O**: Core modules must not import database, filesystem, or network modules
+2. **No UI**: Core modules must not import Svelte stores or components
+3. **Pure functions**: Prefer pure functions over stateful classes
+4. **Testable**: All core logic must be unit-testable without mocks
+5. **Explicit dependencies**: If external data needed, accept it as parameters
+
+### Migration Path (NOT YET EXECUTED)
+
+1. Extract pure validation logic from `bead-validation.ts` → `core/validation/`
+2. Extract state machine from `bead-lifecycle.ts` → `core/state-machine/`
+3. Consolidate types from multiple files → `core/types/`
+4. Update imports in consuming modules
+5. Add unit tests for all core modules
+
+**Note**: This refactoring is tracked as a separate bead. Do NOT execute until explicitly planned.
+
+---
+
 ## Future: CodeGraph Integration
 
 CodeGraph will provide intelligent code context for prompts:
