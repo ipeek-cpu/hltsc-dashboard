@@ -1845,8 +1845,8 @@
 	.chat-sidebar {
 		display: flex;
 		flex-direction: column;
-		background: #1a1a1a;
-		border-left: 1px solid #334155;
+		background: #ffffff;
+		border-left: 1px solid #e5e7eb;
 		overflow: hidden;
 		min-width: 300px;
 		max-width: 60vw;
@@ -1866,10 +1866,10 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
-		border-right: 1px solid #334155;
+		border-right: 1px solid #e5e7eb;
 		min-height: 0;
-		min-width: 0;
-		background: #1a1a1a;
+		min-width: 280px;
+		background: #ffffff;
 	}
 
 	.chat-panel.single {
@@ -1885,15 +1885,15 @@
 		align-items: center;
 		justify-content: space-between;
 		padding: 6px 12px;
-		background: #0f172a;
-		border-bottom: 1px solid #334155;
+		background: #f8fafc;
+		border-bottom: 1px solid #e5e7eb;
 		flex-shrink: 0;
 	}
 
 	.panel-label {
 		font-size: 11px;
 		font-weight: 600;
-		color: #94a3b8;
+		color: #64748b;
 		text-transform: uppercase;
 		letter-spacing: 0.5px;
 	}
@@ -1913,8 +1913,8 @@
 	}
 
 	.panel-close-btn:hover {
-		background: #334155;
-		color: #e2e8f0;
+		background: #e2e8f0;
+		color: #475569;
 	}
 
 	/* Ensure ChatSheet fills the panel */
@@ -1931,92 +1931,18 @@
 		width: 100% !important;
 	}
 
-	/* Dark theme overrides for ChatSheet - applied to all panels */
-	.chat-panel :global(.sheet-header) {
-		background: #1a1a1a;
-		border-bottom-color: #334155;
-	}
-
-	.chat-panel :global(.sheet-header),
-	.chat-panel :global(.header-content),
-	.chat-panel :global(.agent-title) {
-		color: #e2e8f0;
-	}
-
-	.chat-panel :global(.agent-description) {
-		color: #94a3b8;
-	}
-
-	.chat-panel :global(.status-badge) {
-		background: #334155;
-	}
-
+	/* Only make the messages area (terminal) black */
 	.chat-panel :global(.messages-area) {
 		background: #0a0a0a;
 	}
 
-	.chat-panel :global(.input-area) {
-		background: #1a1a1a;
-		border-top-color: #334155;
-	}
-
-	.chat-panel :global(.message-input) {
-		background: #262626;
-		border-color: #404040;
-		color: #e2e8f0;
-	}
-
-	.chat-panel :global(.message-input)::placeholder {
-		color: #6b7280;
-	}
-
+	/* Style empty state for dark background */
 	.chat-panel :global(.empty-state) {
-		color: #6b7280;
+		color: #9ca3af;
 	}
 
 	.chat-panel :global(.empty-state-icon) {
-		color: #404040;
-	}
-
-	/* Dark theme for session stats */
-	.chat-panel :global(.session-stats) {
-		background: #1a1a1a;
-		border-top-color: #334155;
-		border-bottom-color: #334155;
-	}
-
-	.chat-panel :global(.stat-item) {
-		color: #94a3b8;
-	}
-
-	.chat-panel :global(.stat-value) {
-		color: #e2e8f0;
-	}
-
-	/* Dark theme for send button and controls */
-	.chat-panel :global(.send-btn) {
-		background: #3b82f6;
-	}
-
-	.chat-panel :global(.send-btn:hover) {
-		background: #2563eb;
-	}
-
-	.chat-panel :global(.model-selector),
-	.chat-panel :global(.agent-selector) {
-		background: #262626;
-		border-color: #404040;
-		color: #e2e8f0;
-	}
-
-	.chat-panel :global(.keyboard-hints) {
-		color: #6b7280;
-	}
-
-	.chat-panel :global(.keyboard-hint) {
-		background: #262626;
-		border-color: #404040;
-		color: #94a3b8;
+		color: #4b5563;
 	}
 
 	.add-chat-btn {
@@ -2025,10 +1951,10 @@
 		justify-content: center;
 		gap: 6px;
 		padding: 10px;
-		background: #1a1a1a;
+		background: #f9fafb;
 		border: none;
-		border-top: 1px solid #334155;
-		color: #94a3b8;
+		border-top: 1px solid #e5e7eb;
+		color: #6b7280;
 		font-size: 12px;
 		font-weight: 500;
 		cursor: pointer;
@@ -2037,8 +1963,8 @@
 	}
 
 	.add-chat-btn:hover {
-		background: #262626;
-		color: #e2e8f0;
+		background: #f3f4f6;
+		color: #374151;
 	}
 
 	.chat-toggle.active {
