@@ -33,33 +33,42 @@ Establish a solid foundation with clean git hygiene, reliable beads database syn
 ## Beads
 
 ### BC-EP0-001: Initialize Repository with Planning Artifacts
-**Status**: In Progress
+**Status**: Closed
 **Objective**: Set up the repository with proper git hygiene and seed all planning documentation.
 
 **Acceptance Criteria**:
-- [ ] .gitignore updated with proper exclusions (.codegraph, .beads, DerivedData, etc.)
-- [ ] /docs folder created with 7 canonical spec documents
-- [ ] /docs/epics folder created with 8 epic definitions
-- [ ] Git remote configured (github.com/ipeek-cpu/hlstc-dashboard)
-- [ ] All uncommitted changes (67 files) committed with descriptive message
-- [ ] Pushed to remote successfully
+- [x] .gitignore updated with proper exclusions (.codegraph, .beads, DerivedData, etc.)
+- [x] /docs folder created with 7 canonical spec documents
+- [x] /docs/epics folder created with 8 epic definitions
+- [x] Git remote configured (github.com/ipeek-cpu/hlstc-dashboard)
+- [x] All uncommitted changes (67 files) committed with descriptive message
+- [x] Pushed to remote successfully
+
+**Completion Evidence**: Commit `b63a8f7` contains all planning artifacts. Branch synced with origin/main.
 
 **Dependencies**: None
 
 ---
 
 ### BC-EP0-002: Implement Bead Validation Module
-**Status**: Ready
+**Status**: Closed
 **Objective**: Create a validation layer that ensures all bead writes meet data integrity requirements.
 
 **Acceptance Criteria**:
-- [ ] `src/lib/bead-validation.ts` module created
-- [ ] Timestamp validation: all timestamps must include timezone (ISO8601 with offset)
-- [ ] Status validation: only valid statuses accepted (open, ready, in_progress, in_review, closed)
-- [ ] State transition validation: only valid transitions allowed per state machine
-- [ ] Required field validation: assignee required for in_progress, execution log for in_review
-- [ ] Validation returns structured result with errors and warnings
-- [ ] Unit tests for all validation rules
+- [x] `src/lib/bead-validation.ts` module created
+- [x] Timestamp validation: all timestamps must include timezone (ISO8601 with offset)
+- [x] Status validation: only valid statuses accepted (open, ready, in_progress, in_review, closed)
+- [x] State transition validation: only valid transitions allowed per state machine
+- [x] Required field validation: assignee required for in_progress, execution log for in_review
+- [x] Validation returns structured result with errors and warnings
+- [x] Unit tests for all validation rules
+
+**Completion Evidence**:
+- `src/lib/bead-validation.ts` (310 lines) - timestamp, status, assignee, lifecycle validation
+- `src/lib/bead-lifecycle.ts` (157 lines) - state machine and transition validation
+- `src/lib/__tests__/bead-validation.test.ts` - 49 unit tests
+- `src/lib/__tests__/bead-lifecycle.test.ts` - 54 unit tests
+- All 103 tests passing
 
 **Dependencies**: BC-EP0-001
 
