@@ -128,16 +128,33 @@ Establish a solid foundation with clean git hygiene, reliable beads database syn
 ---
 
 ### BC-EP0-005: Improve SQLite Connection Reliability
-**Status**: Ready
+**Status**: Closed
 **Objective**: Ensure database connections are stable and handle edge cases gracefully.
 
 **Acceptance Criteria**:
-- [ ] WAL mode enabled for concurrent reads
-- [ ] Connection timeout handling
-- [ ] Graceful reconnection on connection loss
-- [ ] Database file existence check before connecting
-- [ ] Clear error messages when database unavailable
-- [ ] Health check endpoint reports database status
+- [x] WAL mode enabled for concurrent reads
+- [x] Connection timeout handling
+- [x] Graceful reconnection on connection loss
+- [x] Database file existence check before connecting
+- [x] Clear error messages when database unavailable
+- [x] Health check endpoint reports database status
+
+**Completion Evidence**:
+- `src/lib/db.ts` enhanced with:
+  - `DatabaseError` class with codes: NOT_FOUND, CONNECTION_FAILED, QUERY_FAILED, TIMEOUT
+  - `DatabaseHealth` interface for monitoring
+  - `databaseExists()` - checks file existence before connecting
+  - `getDatabaseHealth()` - comprehensive health status
+  - `closeDb()` - graceful cleanup for reconnection
+  - Connection timeout: 5 seconds via better-sqlite3 options
+  - Retry rate limiting: 5 seconds between failed attempts
+  - Connection health check on each `getDb()` call
+- `/api/health` endpoint enhanced to return:
+  - HTTP 200 for healthy, 503 for degraded/unhealthy
+  - Full DatabaseHealth in response body
+  - X-Response-Time header
+- `src/lib/__tests__/db.test.ts` - 16 unit tests
+- All 180 tests passing
 
 **Dependencies**: BC-EP0-001
 

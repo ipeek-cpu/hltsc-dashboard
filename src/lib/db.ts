@@ -1,16 +1,167 @@
 import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
 
 const BEADS_DB_PATH = path.resolve(process.cwd(), '.beads/beads.db');
 
 let db: Database.Database | null = null;
+let lastConnectionAttempt = 0;
+const CONNECTION_RETRY_INTERVAL = 5000; // 5 seconds between retry attempts
 
+/**
+ * Database connection error with user-friendly messaging
+ */
+export class DatabaseError extends Error {
+	constructor(
+		message: string,
+		public readonly code: 'NOT_FOUND' | 'CONNECTION_FAILED' | 'QUERY_FAILED' | 'TIMEOUT',
+		public readonly path?: string
+	) {
+		super(message);
+		this.name = 'DatabaseError';
+	}
+}
+
+/**
+ * Database health status for monitoring
+ */
+export interface DatabaseHealth {
+	connected: boolean;
+	path: string;
+	exists: boolean;
+	walMode: boolean;
+	dataVersion: number | null;
+	error: string | null;
+}
+
+/**
+ * Check if the database file exists
+ */
+export function databaseExists(): boolean {
+	return fs.existsSync(BEADS_DB_PATH);
+}
+
+/**
+ * Get the database path
+ */
+export function getDatabasePath(): string {
+	return BEADS_DB_PATH;
+}
+
+/**
+ * Get comprehensive database health status
+ */
+export function getDatabaseHealth(): DatabaseHealth {
+	const health: DatabaseHealth = {
+		connected: false,
+		path: BEADS_DB_PATH,
+		exists: databaseExists(),
+		walMode: false,
+		dataVersion: null,
+		error: null
+	};
+
+	if (!health.exists) {
+		health.error = `Database not found at ${BEADS_DB_PATH}. Run 'bd init' to initialize Beads.`;
+		return health;
+	}
+
+	try {
+		const database = getDb();
+		health.connected = true;
+
+		const journalMode = database.pragma('journal_mode', { simple: true });
+		health.walMode = journalMode === 'wal';
+
+		health.dataVersion = database.pragma('data_version', { simple: true }) as number;
+	} catch (error) {
+		health.error = error instanceof Error ? error.message : 'Unknown connection error';
+	}
+
+	return health;
+}
+
+/**
+ * Close the database connection (for cleanup or reconnection)
+ */
+export function closeDb(): void {
+	if (db) {
+		try {
+			db.close();
+		} catch {
+			// Ignore close errors
+		}
+		db = null;
+	}
+}
+
+/**
+ * Get database connection with existence check and graceful error handling
+ */
 function getDb(): Database.Database {
-  if (!db) {
-    db = new Database(BEADS_DB_PATH, { readonly: true });
-    db.pragma('journal_mode = WAL');
-  }
-  return db;
+	// Return existing connection if valid
+	if (db) {
+		try {
+			// Quick health check - if this fails, connection is stale
+			db.pragma('data_version', { simple: true });
+			return db;
+		} catch {
+			// Connection is stale, close and reconnect
+			closeDb();
+		}
+	}
+
+	// Rate limit reconnection attempts
+	const now = Date.now();
+	if (now - lastConnectionAttempt < CONNECTION_RETRY_INTERVAL && lastConnectionAttempt > 0) {
+		throw new DatabaseError(
+			'Database connection recently failed. Waiting before retry.',
+			'CONNECTION_FAILED',
+			BEADS_DB_PATH
+		);
+	}
+	lastConnectionAttempt = now;
+
+	// Check if database file exists
+	if (!databaseExists()) {
+		throw new DatabaseError(
+			`Beads database not found at ${BEADS_DB_PATH}. ` +
+				`Make sure you have initialized Beads in this project by running 'bd init'.`,
+			'NOT_FOUND',
+			BEADS_DB_PATH
+		);
+	}
+
+	try {
+		db = new Database(BEADS_DB_PATH, {
+			readonly: true,
+			timeout: 5000 // 5 second timeout for locks
+		});
+		db.pragma('journal_mode = WAL');
+		lastConnectionAttempt = 0; // Reset on successful connection
+		return db;
+	} catch (error) {
+		const message =
+			error instanceof Error
+				? `Failed to connect to Beads database: ${error.message}`
+				: 'Failed to connect to Beads database';
+		throw new DatabaseError(message, 'CONNECTION_FAILED', BEADS_DB_PATH);
+	}
+}
+
+/**
+ * Execute a database query with error handling
+ */
+function safeQuery<T>(queryFn: (db: Database.Database) => T, fallback: T): T {
+	try {
+		return queryFn(getDb());
+	} catch (error) {
+		if (error instanceof DatabaseError) {
+			throw error;
+		}
+		const message = error instanceof Error ? error.message : 'Query failed';
+		throw new DatabaseError(message, 'QUERY_FAILED');
+	}
 }
 
 export interface Issue {
