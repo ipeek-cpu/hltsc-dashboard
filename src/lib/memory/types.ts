@@ -481,7 +481,9 @@ export type MemoryErrorCode =
 	| 'INVALID_ENTRY'
 	| 'ENTRY_NOT_FOUND'
 	| 'SCOPE_VIOLATION'
-	| 'QUERY_FAILED';
+	| 'QUERY_FAILED'
+	| 'MISSING_PATH'
+	| 'CREATE_FAILED';
 
 /**
  * Error response for memory API
