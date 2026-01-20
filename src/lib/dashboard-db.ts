@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
+import type { CachedIntent } from './intent/types';
 
 const DASHBOARD_DIR = path.join(os.homedir(), '.beads-dashboard');
 const DASHBOARD_DB_PATH = path.join(DASHBOARD_DIR, 'dashboard.db');
@@ -47,6 +48,26 @@ function initSchema(): void {
 	const hasProfileSettings = columns.some(col => col.name === 'profile_settings');
 	if (!hasProfileSettings) {
 		database.exec('ALTER TABLE projects ADD COLUMN profile_settings TEXT');
+	}
+
+	// Migration: Add project_intents table for caching parsed PROJECT_INTENT.md files
+	// This is a CACHE table - the source of truth is always the PROJECT_INTENT.md file
+	const intentTableExists = database.prepare(
+		"SELECT name FROM sqlite_master WHERE type='table' AND name='project_intents'"
+	).get();
+	if (!intentTableExists) {
+		database.exec(`
+			CREATE TABLE IF NOT EXISTS project_intents (
+				project_id TEXT PRIMARY KEY,
+				file_hash TEXT NOT NULL,
+				parsed_at TEXT NOT NULL,
+				version INTEGER NOT NULL,
+				content TEXT NOT NULL,
+				anchors TEXT NOT NULL,
+				sections TEXT
+			);
+			CREATE INDEX IF NOT EXISTS idx_project_intents_hash ON project_intents(file_hash);
+		`);
 	}
 }
 
@@ -236,4 +257,102 @@ export function setProjectDevConfig(id: string, config: DevServerConfig): void {
 export function clearProjectDevConfig(id: string): void {
 	const database = getDb();
 	database.prepare('UPDATE projects SET dev_config = NULL WHERE id = ?').run(id);
+}
+
+// ============================================================================
+// Intent Cache Operations
+// ============================================================================
+
+/**
+ * Database row type for project_intents table
+ */
+interface IntentCacheRow {
+	project_id: string;
+	file_hash: string;
+	parsed_at: string;
+	version: number;
+	content: string;
+	anchors: string;
+	sections: string | null;
+}
+
+/**
+ * Get cached intent for a project
+ *
+ * @param projectId - The project ID to look up
+ * @returns Cached intent or null if not found
+ */
+export function getCachedIntent(projectId: string): CachedIntent | null {
+	const database = getDb();
+	const row = database
+		.prepare('SELECT * FROM project_intents WHERE project_id = ?')
+		.get(projectId) as IntentCacheRow | undefined;
+
+	if (!row) return null;
+
+	return {
+		projectId: row.project_id,
+		fileHash: row.file_hash,
+		parsedAt: row.parsed_at,
+		version: row.version,
+		content: row.content,
+		anchors: JSON.parse(row.anchors) as string[]
+	};
+}
+
+/**
+ * Store or update cached intent for a project
+ *
+ * @param intent - The cached intent to store
+ */
+export function setCachedIntent(intent: CachedIntent): void {
+	const database = getDb();
+	database
+		.prepare(
+			`INSERT OR REPLACE INTO project_intents
+			(project_id, file_hash, parsed_at, version, content, anchors, sections)
+			VALUES (?, ?, ?, ?, ?, ?, NULL)`
+		)
+		.run(
+			intent.projectId,
+			intent.fileHash,
+			intent.parsedAt,
+			intent.version,
+			intent.content,
+			JSON.stringify(intent.anchors)
+		);
+}
+
+/**
+ * Delete cached intent for a project
+ *
+ * @param projectId - The project ID to delete cache for
+ * @returns true if a row was deleted, false otherwise
+ */
+export function deleteCachedIntent(projectId: string): boolean {
+	const database = getDb();
+	const result = database
+		.prepare('DELETE FROM project_intents WHERE project_id = ?')
+		.run(projectId);
+	return result.changes > 0;
+}
+
+/**
+ * Check if the intent cache is valid by comparing file hashes
+ *
+ * This is the primary cache invalidation mechanism. If the file hash
+ * has changed, the cache is stale and should be refreshed.
+ *
+ * @param projectId - The project ID to check
+ * @param currentHash - SHA-256 hash of the current file content
+ * @returns true if cache is valid (hashes match), false if stale or not found
+ */
+export function isIntentCacheValid(projectId: string, currentHash: string): boolean {
+	const database = getDb();
+	const row = database
+		.prepare('SELECT file_hash FROM project_intents WHERE project_id = ?')
+		.get(projectId) as { file_hash: string } | undefined;
+
+	if (!row) return false;
+	return row.file_hash === currentHash;
 }
