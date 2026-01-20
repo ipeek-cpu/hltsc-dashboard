@@ -528,12 +528,27 @@ The frontmatter MUST be at the very beginning of the file, enclosed by \`---\` m
 }
 
 /**
+ * Intent context for injection into Claude sessions
+ */
+export interface IntentContextParam {
+	/** Project ID this intent belongs to */
+	projectId: string;
+	/** Formatted markdown content ready for injection */
+	formattedMarkdown: string;
+	/** All anchor paths available in the document */
+	anchors: string[];
+	/** Anchors linked to the current bead (for highlighting) */
+	linkedAnchors?: string[];
+}
+
+/**
  * Generate complete project instructions for Claude
  * Combines all instruction sections based on user's skill level
  */
 export function generateProjectInstructions(
 	skillLevel: SkillLevel | undefined,
-	bdPrimeContext?: string | null
+	bdPrimeContext?: string | null,
+	intentContext?: IntentContextParam | null
 ): string {
 	const agentFileInstructions = getAgentFileInstructions();
 	const beadsInstructions = getBeadsCliInstructions();
@@ -553,9 +568,27 @@ ${bdPrimeContext}
 </beads-workflow>`
 		: '';
 
+	// NEW: Intent context injection
+	let intentSection = '';
+	if (intentContext?.formattedMarkdown) {
+		const linkedAnchorsNote = intentContext.linkedAnchors?.length
+			? `\nThe following intent sections are directly relevant to the current task: ${intentContext.linkedAnchors.join(', ')}`
+			: '';
+
+		intentSection = `## Project Intent
+
+<project-intent>
+${intentContext.formattedMarkdown}
+</project-intent>
+
+IMPORTANT: The sections above define this project's business model, constraints, and anti-goals.
+When making decisions, ensure your approach aligns with these documented intentions.${linkedAnchorsNote}`;
+	}
+
 	const sections = [
 		agentFileInstructions,
 		bdPrimeSection,  // Include bd prime context early for workflow awareness
+		intentSection,   // Intent context for business/technical alignment
 		beadsInstructions,
 		skillInstructions,
 		planningInstructions
