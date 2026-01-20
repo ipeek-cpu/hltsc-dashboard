@@ -21,6 +21,8 @@ import { DEFAULT_SESSION_METRICS } from './session-context-types';
 import { createMemoryEntry } from './memory/db';
 import type { CreateMemoryEntry } from './memory/types';
 import { DEFAULT_RETENTION_DAYS } from './memory/types';
+import { getScopedMemories, rankMemories, buildMemoryBrief } from './memory/retrieval';
+import { getParentIssue } from './project-db';
 
 // ============================================================================
 // Path Helpers
@@ -55,11 +57,101 @@ export function getSessionMessagesPath(projectPath: string, sessionId: string): 
 }
 
 // ============================================================================
+// Memory Brief Helpers
+// ============================================================================
+
+/**
+ * Get the parent epic ID for a bead
+ * Queries beads.db to find parent-child relationship
+ *
+ * @param projectPath - Path to the project root
+ * @param beadId - ID of the bead to find the epic for
+ * @returns The epic ID if the bead has an epic parent, undefined otherwise
+ */
+function getEpicIdForBead(projectPath: string, beadId: string): string | undefined {
+	try {
+		const parent = getParentIssue(projectPath, beadId);
+		// Return the parent ID only if the parent is an epic
+		if (parent && parent.issue_type === 'epic') {
+			return parent.id;
+		}
+		return undefined;
+	} catch (error) {
+		// Log but don't fail - database might not be available
+		console.error('Failed to get epic for bead:', error);
+		return undefined;
+	}
+}
+
+/**
+ * Generate a memory brief for a bead-scoped session
+ * Retrieves and ranks relevant memories, then builds a token-budgeted brief
+ *
+ * @param projectPath - Path to the project root
+ * @param projectId - Project ID
+ * @param beadId - Bead ID to scope the memories to
+ * @param maxTokens - Maximum token budget for the brief (default: 2000)
+ * @returns Memory brief text and token estimate, or undefined if no memories
+ */
+function generateMemoryBrief(
+	projectPath: string,
+	projectId: string,
+	beadId: string,
+	maxTokens: number = 2000
+): { text: string; tokenEstimate: number } | undefined {
+	try {
+		const epicId = getEpicIdForBead(projectPath, beadId);
+
+		const scoped = getScopedMemories(projectPath, {
+			projectId,
+			beadId,
+			epicId
+		});
+
+		// Combine all memories for ranking
+		const allMemories = [
+			...scoped.beadMemories,
+			...scoped.epicMemories,
+			...scoped.activeConstraints
+		];
+
+		// Skip if no memories found
+		if (allMemories.length === 0) {
+			return undefined;
+		}
+
+		// Rank memories by relevance to current context
+		const ranked = rankMemories(allMemories, {
+			beadId,
+			epicId
+		});
+
+		// Build token-budgeted brief
+		const brief = buildMemoryBrief(ranked, { maxTokens });
+
+		// Only return if we have actual content
+		if (brief.includedCount === 0) {
+			return undefined;
+		}
+
+		return {
+			text: brief.text,
+			tokenEstimate: brief.tokenEstimate
+		};
+	} catch (error) {
+		// Log but don't fail - memory retrieval failure shouldn't break session creation
+		console.error('Failed to generate memory brief:', error);
+		return undefined;
+	}
+}
+
+// ============================================================================
 // Session CRUD Operations
 // ============================================================================
 
 /**
  * Create a new session
+ * For bead-scoped sessions, automatically generates a memory brief
  */
 export async function createSession(
 	projectPath: string,
@@ -84,6 +176,19 @@ export async function createSession(
 		title: options.title,
 		metrics: { ...DEFAULT_SESSION_METRICS }
 	};
+
+	// Generate memory brief for bead-scoped sessions
+	if (options.beadId) {
+		const memoryBrief = generateMemoryBrief(
+			projectPath,
+			options.projectId,
+			options.beadId
+		);
+		if (memoryBrief) {
+			session.memoryBrief = memoryBrief.text;
+			session.memoryBriefTokens = memoryBrief.tokenEstimate;
+		}
+	}
 
 	await saveSession(projectPath, session);
 	return session;
