@@ -19,8 +19,8 @@
 
   // Get child issues for each epic (for counting)
   function getEpicChildCount(epicId: string): number {
-    // Beads uses ID pattern: children have IDs like {epicId}.{number}
-    return issues.filter(i => i.id.startsWith(epicId + '.')).length;
+    // Use parent_id from dependencies table
+    return issues.filter(i => i.parent_id === epicId).length;
   }
 
   // Handle search with debounce

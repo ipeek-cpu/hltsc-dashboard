@@ -102,11 +102,12 @@ export function getAllIssues(projectPath: string): Issue[] {
 	return db
 		.prepare(
 			`
-		SELECT id, title, description, status, priority, issue_type,
-		       assignee, created_at, created_by, updated_at, closed_at, close_reason
-		FROM issues
-		WHERE deleted_at IS NULL
-		ORDER BY priority ASC, updated_at DESC
+		SELECT i.id, i.title, i.description, i.status, i.priority, i.issue_type,
+		       i.assignee, i.created_at, i.created_by, i.updated_at, i.closed_at, i.close_reason,
+		       (SELECT depends_on_id FROM dependencies WHERE issue_id = i.id AND type = 'parent-child' LIMIT 1) as parent_id
+		FROM issues i
+		WHERE i.deleted_at IS NULL
+		ORDER BY i.priority ASC, i.updated_at DESC
 	`
 		)
 		.all() as Issue[];

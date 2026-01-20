@@ -11,6 +11,8 @@ export interface Issue {
   updated_at: string;
   closed_at: string | null;
   close_reason: string;
+  // Parent epic ID (from dependencies table with type='parent-child')
+  parent_id?: string | null;
   // Lifecycle fields for bead workflow enforcement
   branch_name?: string;
   agent_id?: string;

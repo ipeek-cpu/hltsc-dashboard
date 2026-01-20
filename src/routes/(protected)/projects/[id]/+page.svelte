@@ -985,8 +985,8 @@
 			result = result.filter(i => {
 				// Include the epic itself
 				if (i.id === epicId) return true;
-				// Include children - beads uses ID pattern: children have IDs like {epicId}.{number}
-				if (i.id.startsWith(epicId + '.')) return true;
+				// Include children - check parent_id from dependencies table
+				if (i.parent_id === epicId) return true;
 				return false;
 			});
 		}
