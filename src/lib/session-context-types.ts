@@ -49,6 +49,13 @@ export interface Session {
 
 	// Metrics (accumulated during session)
 	metrics: SessionMetrics;
+
+	// Memory context (generated at session creation for bead-scoped sessions)
+	/** Pre-generated memory brief for session start */
+	memoryBrief?: string;
+
+	/** Token estimate for the memory brief */
+	memoryBriefTokens?: number;
 }
 
 /**
