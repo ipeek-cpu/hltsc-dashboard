@@ -18,6 +18,9 @@ import type {
 	SessionMetrics
 } from './session-context-types';
 import { DEFAULT_SESSION_METRICS } from './session-context-types';
+import { createMemoryEntry } from './memory/db';
+import type { CreateMemoryEntry } from './memory/types';
+import { DEFAULT_RETENTION_DAYS } from './memory/types';
 
 // ============================================================================
 // Path Helpers
@@ -378,6 +381,7 @@ export async function resumeSession(
 
 /**
  * Close a session
+ * Auto-captures a checkpoint before closing if the session has a beadId and messages
  */
 export async function closeSession(
 	projectPath: string,
@@ -387,6 +391,14 @@ export async function closeSession(
 	const session = await loadSession(projectPath, sessionId);
 	if (!session) {
 		return null;
+	}
+
+	// Auto-capture checkpoint before closing (if scoped and has messages)
+	if (session.beadId && session.metrics.messageCount > 0) {
+		await captureSessionCheckpoint(projectPath, sessionId, {
+			trigger: 'session_end',
+			summary
+		});
 	}
 
 	if (summary) {
@@ -476,4 +488,141 @@ export async function getActiveSession(
 	}
 
 	return null;
+}
+
+// ============================================================================
+// Session Checkpoint Capture
+// ============================================================================
+
+/**
+ * Checkpoint trigger types
+ */
+export type CheckpointTrigger = 'session_end' | 'compaction' | 'manual';
+
+/**
+ * Build a checkpoint summary from recent messages
+ * Used when no explicit summary is provided
+ */
+function buildCheckpointSummary(messages: SessionMessage[]): string {
+	// Get the last user and assistant messages
+	const userMessages = messages.filter(m => m.role === 'user');
+	const assistantMessages = messages.filter(m => m.role === 'assistant');
+
+	const lastUserMsg = userMessages[userMessages.length - 1]?.content || '';
+	const lastAssistantMsg = assistantMessages[assistantMessages.length - 1]?.content || '';
+
+	// Truncate to 500 chars each
+	const truncatedUser = lastUserMsg.slice(0, 500) + (lastUserMsg.length > 500 ? '...' : '');
+	const truncatedAssistant = lastAssistantMsg.slice(0, 500) + (lastAssistantMsg.length > 500 ? '...' : '');
+
+	return `### Last Exchange
+
+**User:** ${truncatedUser}
+
+**Assistant:** ${truncatedAssistant}`;
+}
+
+/**
+ * Build the full checkpoint content with metadata
+ */
+function buildCheckpointContent(
+	session: Session,
+	trigger: CheckpointTrigger,
+	lastExchangeSummary: string
+): string {
+	const durationDisplay = session.metrics.durationMs > 0
+		? `${Math.round(session.metrics.durationMs / 1000)}s`
+		: 'N/A';
+
+	return `## Session Checkpoint
+
+**Trigger:** ${trigger}
+**Session:** ${session.id}
+**Bead:** ${session.beadId || 'N/A'}
+**Duration:** ${durationDisplay}
+**Messages:** ${session.metrics.messageCount}
+
+${lastExchangeSummary}`;
+}
+
+/**
+ * Capture a checkpoint from the current session
+ * Creates a memory entry with kind='checkpoint'
+ *
+ * @param projectPath - Path to the project root
+ * @param sessionId - ID of the session to checkpoint
+ * @param options - Checkpoint options
+ * @returns The ID of the created memory entry, or null if unable to create
+ */
+export async function captureSessionCheckpoint(
+	projectPath: string,
+	sessionId: string,
+	options?: {
+		trigger: CheckpointTrigger;
+		summary?: string;
+	}
+): Promise<string | null> {
+	const session = await loadSession(projectPath, sessionId);
+	if (!session) {
+		return null;
+	}
+
+	// Only create checkpoint if session has a beadId (scoped session)
+	if (!session.beadId) {
+		return null;
+	}
+
+	// Only create if session has messages
+	if (session.metrics.messageCount === 0) {
+		return null;
+	}
+
+	const trigger = options?.trigger || 'manual';
+
+	// Load recent messages to build summary
+	const recentMessages = await loadRecentMessages(projectPath, sessionId, 10);
+
+	// Build summary: use provided summary or auto-generate from messages
+	let lastExchangeSummary: string;
+	if (options?.summary) {
+		lastExchangeSummary = `### Summary\n\n${options.summary}`;
+	} else {
+		lastExchangeSummary = buildCheckpointSummary(recentMessages);
+	}
+
+	// Build the full checkpoint content
+	const content = buildCheckpointContent(session, trigger, lastExchangeSummary);
+
+	// Calculate expiration (30 days from now for checkpoints)
+	const retentionDays = DEFAULT_RETENTION_DAYS.checkpoint ?? 30;
+	const expiresAt = new Date(Date.now() + retentionDays * 24 * 60 * 60 * 1000).toISOString();
+
+	// Create the memory entry
+	try {
+		const memoryEntry: CreateMemoryEntry = {
+			projectId: session.projectId,
+			beadId: session.beadId,
+			sessionId: session.id,
+			agentName: session.agentName,
+			kind: 'checkpoint',
+			title: `Session checkpoint (${trigger})`,
+			content,
+			data: {
+				trigger,
+				messageCount: session.metrics.messageCount,
+				durationMs: session.metrics.durationMs,
+				totalInputTokens: session.metrics.totalInputTokens,
+				totalOutputTokens: session.metrics.totalOutputTokens,
+				toolCallCount: session.metrics.toolCallCount
+			},
+			expiresAt
+		};
+
+		const entryId = createMemoryEntry(projectPath, memoryEntry);
+		return entryId;
+	} catch (error) {
+		// Log but don't throw - checkpoint failure shouldn't break session close
+		console.error('Failed to capture session checkpoint:', error);
+		return null;
+	}
 }
