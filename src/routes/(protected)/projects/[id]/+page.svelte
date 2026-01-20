@@ -1425,6 +1425,7 @@
 		onback={handleBack}
 		canGoBack={issueHistory.length > 0}
 		projectId={$page.params.id}
+		projectPath={project?.path}
 		{agents}
 		onupdate={handleIssueUpdate}
 		ondelete={handleIssueDelete}

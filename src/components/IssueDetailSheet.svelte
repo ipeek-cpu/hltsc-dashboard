@@ -10,10 +10,22 @@
   import CompleteBeadModal from './CompleteBeadModal.svelte';
   import StatusDropdown from './StatusDropdown.svelte';
   import ActivityTimeline from './ActivityTimeline.svelte';
+  import MemoryPanel from './MemoryPanel.svelte';
+  import IntentAnchorBadge from './IntentAnchorBadge.svelte';
+  import IntentViewer from './IntentViewer.svelte';
   import { toasts } from '$lib/stores/toast-store';
   import type { BeadStatus } from '$lib/bead-lifecycle';
 
-  let { issue, isOpen, onclose, onissueclick, onback, canGoBack = false, onupdate, ondelete, projectId, agents = [], onstarttask, onchattask, onstoptask, activeRunId = null }: {
+  // Interface for linked intent anchors
+  interface LinkedAnchor {
+    anchor: string;
+    relevance: 'primary' | 'related';
+    previewText?: string;
+    addedBy: 'user' | 'agent';
+    addedAt: string;
+  }
+
+  let { issue, isOpen, onclose, onissueclick, onback, canGoBack = false, onupdate, ondelete, projectId, projectPath, agents = [], onstarttask, onchattask, onstoptask, activeRunId = null }: {
     issue: IssueWithDetails | null;
     isOpen: boolean;
     onclose: () => void;
@@ -23,6 +35,7 @@
     onupdate?: (updatedIssue: IssueWithDetails) => void;
     ondelete?: (deletedIds: string[]) => void;
     projectId?: string;
+    projectPath?: string;
     agents?: Agent[];
     onstarttask?: (issue: Issue, mode: 'autonomous' | 'guided') => void;
     onchattask?: (issue: Issue) => void;
@@ -48,6 +61,19 @@
   let showClaimModal = $state(false);
   let showCompleteModal = $state(false);
 
+  // Quick capture state for memory
+  let showQuickCapture = $state(false);
+  let captureKind = $state<'decision' | 'checkpoint' | 'constraint'>('decision');
+  let captureContent = $state('');
+  let capturing = $state(false);
+  let memoryPanelKey = $state(0); // Used to trigger MemoryPanel refresh
+
+  // Intent anchor linking state
+  let linkedAnchors = $state<LinkedAnchor[]>([]);
+  let loadingAnchors = $state(false);
+  let showIntentViewer = $state(false);
+  let highlightAnchor = $state<string | undefined>(undefined);
+
   // Reset edit state when issue changes
   $effect(() => {
     if (issue) {
@@ -56,6 +82,51 @@
       isEditing = false;
     }
   });
+
+  // Load linked anchors when issue changes
+  async function loadLinkedAnchors() {
+    if (!issue?.id || !projectId) {
+      linkedAnchors = [];
+      return;
+    }
+
+    loadingAnchors = true;
+    try {
+      const res = await fetch(`/api/projects/${projectId}/intent/links?beadId=${encodeURIComponent(issue.id)}`);
+      if (res.ok) {
+        const data = await res.json();
+        linkedAnchors = data.links || [];
+      } else {
+        linkedAnchors = [];
+      }
+    } catch (e) {
+      // Silently fail - no linked anchors
+      linkedAnchors = [];
+    } finally {
+      loadingAnchors = false;
+    }
+  }
+
+  // Load linked anchors when issue or projectId changes
+  $effect(() => {
+    if (issue?.id && projectId) {
+      loadLinkedAnchors();
+    } else {
+      linkedAnchors = [];
+    }
+  });
+
+  // Open IntentViewer at a specific anchor
+  function openIntentAtAnchor(anchor: string) {
+    highlightAnchor = anchor;
+    showIntentViewer = true;
+  }
+
+  // Close IntentViewer
+  function closeIntentViewer() {
+    showIntentViewer = false;
+    highlightAnchor = undefined;
+  }
 
   // Render description as markdown
   let renderedDescription = $derived(() => {
@@ -386,6 +457,52 @@
   // Track if we just finished resizing to prevent accidental close
   let justFinishedResizing = $state(false);
 
+  // Quick capture function for memory
+  function quickCapture(kind: 'decision' | 'checkpoint' | 'constraint') {
+    captureKind = kind;
+    showQuickCapture = true;
+  }
+
+  // Submit quick capture to memory API
+  async function submitCapture() {
+    if (!captureContent.trim() || !issue || !projectId || !projectPath) return;
+    capturing = true;
+    try {
+      const response = await fetch(`/api/projects/${projectId}/memory?projectPath=${encodeURIComponent(projectPath)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          beadId: issue.id,
+          epicId: issue.parent?.id,
+          kind: captureKind,
+          title: `${captureKind.charAt(0).toUpperCase() + captureKind.slice(1)} - ${issue.title?.slice(0, 30)}`,
+          content: captureContent
+        })
+      });
+      if (response.ok) {
+        captureContent = '';
+        showQuickCapture = false;
+        // Trigger MemoryPanel refresh by changing the key
+        memoryPanelKey++;
+        toasts.success(`${captureKind.charAt(0).toUpperCase() + captureKind.slice(1)} saved`);
+      } else {
+        const error = await response.json();
+        toasts.error(error.message || 'Failed to save memory');
+      }
+    } catch (e) {
+      console.error('Capture failed:', e);
+      toasts.error('Failed to save memory');
+    } finally {
+      capturing = false;
+    }
+  }
+
+  // Cancel quick capture
+  function cancelQuickCapture() {
+    showQuickCapture = false;
+    captureContent = '';
+  }
+
   function handleBackdropClick(e: MouseEvent) {
     if (e.target === e.currentTarget && !justFinishedResizing) {
       onclose();
@@ -516,6 +633,21 @@
                 <span class="assignee-empty">Unassigned</span>
               {/if}
             </div>
+            {#if linkedAnchors.length > 0}
+              <div class="metadata-row intent-row">
+                <span class="metadata-label">Intent</span>
+                <div class="anchor-badges">
+                  {#each linkedAnchors as link (link.anchor)}
+                    <IntentAnchorBadge
+                      anchor={link.anchor}
+                      previewText={link.previewText}
+                      size="sm"
+                      onclick={openIntentAtAnchor}
+                    />
+                  {/each}
+                </div>
+              </div>
+            {/if}
           </div>
 
           <div class="dates-section">
@@ -653,6 +785,57 @@
 
           <CommentThread comments={issue.comments} />
 
+          {#if projectId && projectPath}
+            <section class="memory-section">
+              <div class="memory-section-header">
+                <h4 class="section-title">Memory</h4>
+                <div class="quick-actions">
+                  <button class="btn-quick" onclick={() => quickCapture('decision')} title="Save Decision">
+                    <Icon name="check-circle" size={14} />
+                    Decision
+                  </button>
+                  <button class="btn-quick" onclick={() => quickCapture('checkpoint')} title="Save Checkpoint">
+                    <Icon name="flag" size={14} />
+                    Checkpoint
+                  </button>
+                  <button class="btn-quick" onclick={() => quickCapture('constraint')} title="Add Constraint">
+                    <Icon name="alert-triangle" size={14} />
+                    Constraint
+                  </button>
+                </div>
+              </div>
+
+              {#if showQuickCapture}
+                <div class="quick-capture-form">
+                  <div class="capture-kind-badge" data-kind={captureKind}>
+                    <Icon name={captureKind === 'decision' ? 'check-circle' : captureKind === 'checkpoint' ? 'flag' : 'alert-triangle'} size={12} />
+                    {captureKind.charAt(0).toUpperCase() + captureKind.slice(1)}
+                  </div>
+                  <textarea
+                    bind:value={captureContent}
+                    placeholder="What should be remembered?"
+                    rows="3"
+                  ></textarea>
+                  <div class="capture-actions">
+                    <button class="btn-secondary" onclick={cancelQuickCapture}>Cancel</button>
+                    <button class="btn-primary" onclick={submitCapture} disabled={capturing || !captureContent.trim()}>
+                      {capturing ? 'Saving...' : `Save ${captureKind}`}
+                    </button>
+                  </div>
+                </div>
+              {/if}
+
+              {#key memoryPanelKey}
+                <MemoryPanel
+                  beadId={issue.id}
+                  {projectId}
+                  {projectPath}
+                  epicId={issue.parent?.id}
+                />
+              {/key}
+            </section>
+          {/if}
+
           <ActivityTimeline events={issue.events || []} />
         </div>
       {:else}
@@ -687,6 +870,15 @@
   onclose={closeCompleteModal}
   oncomplete={handleComplete}
 />
+
+{#if projectId}
+  <IntentViewer
+    {projectId}
+    open={showIntentViewer}
+    {highlightAnchor}
+    onclose={closeIntentViewer}
+  />
+{/if}
 
 <style>
   .sheet-overlay {
@@ -1051,6 +1243,18 @@
     color: #888888;
   }
 
+  .intent-row {
+    align-items: flex-start;
+  }
+
+  .anchor-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+    max-width: 70%;
+  }
+
   .status-badge {
     font-size: 12px;
     font-weight: 500;
@@ -1305,5 +1509,149 @@
     .detail-sheet {
       width: 100vw;
     }
+  }
+
+  /* Memory section styles */
+  .memory-section {
+    margin-top: 24px;
+    border-top: 1px solid #eaeaea;
+    padding-top: 20px;
+  }
+
+  .memory-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .quick-actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  .btn-quick {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    background: #f5f5f5;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    color: #666666;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: 'Figtree', sans-serif;
+  }
+
+  .btn-quick:hover {
+    background: #eeeeee;
+    color: #1a1a1a;
+    border-color: #d0d0d0;
+  }
+
+  .quick-capture-form {
+    margin-bottom: 16px;
+    padding: 12px;
+    background: #f8f8f8;
+    border-radius: 8px;
+  }
+
+  .capture-kind-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    border-radius: 4px;
+    margin-bottom: 8px;
+  }
+
+  .capture-kind-badge[data-kind="decision"] {
+    background: #dcfce7;
+    color: #16a34a;
+  }
+
+  .capture-kind-badge[data-kind="checkpoint"] {
+    background: #ede9fe;
+    color: #7c3aed;
+  }
+
+  .capture-kind-badge[data-kind="constraint"] {
+    background: #fef3c7;
+    color: #d97706;
+  }
+
+  .quick-capture-form textarea {
+    width: 100%;
+    padding: 10px 12px;
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    color: #1a1a1a;
+    font-size: 13px;
+    font-family: 'Figtree', sans-serif;
+    resize: vertical;
+    min-height: 60px;
+    transition: border-color 0.15s ease;
+  }
+
+  .quick-capture-form textarea:focus {
+    outline: none;
+    border-color: #2563eb;
+  }
+
+  .quick-capture-form textarea::placeholder {
+    color: #aaaaaa;
+  }
+
+  .capture-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .capture-actions .btn-secondary,
+  .capture-actions .btn-primary {
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: 'Figtree', sans-serif;
+  }
+
+  .capture-actions .btn-secondary {
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    color: #666666;
+  }
+
+  .capture-actions .btn-secondary:hover {
+    background: #f5f5f5;
+    border-color: #d0d0d0;
+  }
+
+  .capture-actions .btn-primary {
+    background: #2563eb;
+    border: 1px solid #2563eb;
+    color: #ffffff;
+  }
+
+  .capture-actions .btn-primary:hover:not(:disabled) {
+    background: #1d4ed8;
+    border-color: #1d4ed8;
+  }
+
+  .capture-actions .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 </style>
