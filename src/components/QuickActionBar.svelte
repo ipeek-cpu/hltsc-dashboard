@@ -1,16 +1,107 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 	import type { QuickAction } from '$lib/profiles';
+	import type { MemoryEntry } from '$lib/memory/types';
 
 	let {
 		projectId,
+		projectPath = '',
 		actions = [],
 		compact = false
 	}: {
 		projectId: string;
+		projectPath?: string;
 		actions?: QuickAction[];
 		compact?: boolean;
 	} = $props();
+
+	// Action history state
+	let showHistory = $state(false);
+	let historyEntries = $state<MemoryEntry[]>([]);
+	let loadingHistory = $state(false);
+	let selectedHistoryEntry = $state<MemoryEntry | null>(null);
+
+	// Load history from memory API
+	async function loadActionHistory() {
+		if (!projectId || !projectPath) return;
+		loadingHistory = true;
+		try {
+			const res = await fetch(
+				`/api/projects/${projectId}/memory?projectPath=${encodeURIComponent(projectPath)}&kinds=action_report&limit=20`
+			);
+			if (res.ok) {
+				const data = await res.json();
+				historyEntries = data.memories || [];
+			}
+		} catch (e) {
+			console.error('Failed to load action history:', e);
+		} finally {
+			loadingHistory = false;
+		}
+	}
+
+	function toggleHistory() {
+		showHistory = !showHistory;
+		if (showHistory) {
+			loadActionHistory();
+			selectedHistoryEntry = null;
+		}
+	}
+
+	function selectHistoryEntry(entry: MemoryEntry) {
+		selectedHistoryEntry = entry;
+	}
+
+	function backToList() {
+		selectedHistoryEntry = null;
+	}
+
+	async function rerunAction(entry: MemoryEntry | null) {
+		if (!entry) return;
+		const data = entry.data as { actionId?: string } | undefined;
+		if (data?.actionId) {
+			// Find and execute the action
+			const action = actions.find((a) => a.id === data.actionId);
+			if (action) {
+				showHistory = false;
+				await executeAction(action);
+			}
+		}
+	}
+
+	// Format relative time
+	function formatRelativeTime(dateString: string): string {
+		const date = new Date(dateString);
+		const now = new Date();
+		const diffMs = now.getTime() - date.getTime();
+		const diffMins = Math.floor(diffMs / 60000);
+		const diffHours = Math.floor(diffMs / 3600000);
+		const diffDays = Math.floor(diffMs / 86400000);
+
+		if (diffMins < 1) return 'just now';
+		if (diffMins < 60) return `${diffMins}m ago`;
+		if (diffHours < 24) return `${diffHours}h ago`;
+		if (diffDays < 7) return `${diffDays}d ago`;
+		return date.toLocaleDateString();
+	}
+
+	// Helper to extract action data from memory entry
+	type ActionReportData = {
+		exitCode?: number;
+		durationMs?: number;
+		resolvedCommand?: string;
+		actionId?: string;
+	};
+
+	function getEntryData(entry: MemoryEntry | null): ActionReportData {
+		if (!entry) return {};
+		return (entry.data as ActionReportData | undefined) || {};
+	}
+
+	function getExitCodeIcon(entry: MemoryEntry | null): string {
+		const data = getEntryData(entry);
+		return data.exitCode === 0 ? 'check-circle' : 'x-circle';
+	}
 
 	let runningActions = $state(new Set<string>());
 	let confirmingAction = $state<QuickAction | null>(null);
@@ -223,6 +314,71 @@ Exit code: ${result.exitCode} | Duration: ${result.duration}ms`;
 					</button>
 				</div>
 			{/each}
+
+			<!-- History Button and Dropdown -->
+			{#if projectPath}
+				<div class="history-container">
+					<button class="btn-history" onclick={toggleHistory} title="Action History">
+						<Icon name="clock" size={14} />
+						{#if !compact}
+							<span>History</span>
+						{/if}
+					</button>
+
+					{#if showHistory}
+						<div class="history-dropdown">
+							{#if selectedHistoryEntry}
+								<!-- Detail View -->
+								<div class="history-detail">
+									<button class="back-btn" onclick={backToList}>
+										<Icon name="arrow-left" size={14} />
+										Back
+									</button>
+									<div class="detail-header">
+										<Icon name={getExitCodeIcon(selectedHistoryEntry)} size={16} />
+										<span>{selectedHistoryEntry.title}</span>
+									</div>
+									<div class="detail-meta">
+										<span>Exit: {getEntryData(selectedHistoryEntry).exitCode ?? 'unknown'}</span>
+										<span>{getEntryData(selectedHistoryEntry).durationMs ?? 0}ms</span>
+									</div>
+									<div class="detail-command">
+										<code>$ {getEntryData(selectedHistoryEntry).resolvedCommand || '(unknown)'}</code>
+									</div>
+									<div class="detail-output">
+										<pre>{selectedHistoryEntry.content}</pre>
+									</div>
+									<div class="detail-actions">
+										<button class="btn-rerun" onclick={() => rerunAction(selectedHistoryEntry)}>
+											<Icon name="refresh-cw" size={12} />
+											Re-run
+										</button>
+									</div>
+								</div>
+							{:else}
+								<!-- List View -->
+								<div class="history-header">Recent Actions</div>
+								<div class="history-list">
+									{#if loadingHistory}
+										<div class="loading">Loading...</div>
+									{:else if historyEntries.length === 0}
+										<div class="empty">No recent actions</div>
+									{:else}
+										{#each historyEntries as entry}
+											<button class="history-item" onclick={() => selectHistoryEntry(entry)}>
+												<Icon name={getExitCodeIcon(entry)} size={14} />
+												<span class="item-label">{entry.title.replace('Action: ', '')}</span>
+												<span class="item-time">{formatRelativeTime(entry.createdAt)}</span>
+												<Icon name="chevron-right" size={14} />
+											</button>
+										{/each}
+									{/if}
+								</div>
+							{/if}
+						</div>
+					{/if}
+				</div>
+			{/if}
 		</div>
 
 		<!-- Result Viewer Dropdown -->
@@ -604,5 +760,210 @@ Exit code: ${result.exitCode} | Duration: ${result.duration}ms`;
 		background: #f3f4f6;
 		color: #374151;
 		border-color: #d1d5db;
+	}
+
+	/* History Dropdown Styles */
+	.history-container {
+		position: relative;
+	}
+
+	.btn-history {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 6px 12px;
+		background: #ffffff;
+		border: 1px solid #e5e7eb;
+		border-radius: 6px;
+		font-size: 13px;
+		font-weight: 500;
+		color: #374151;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		font-family: 'Figtree', sans-serif;
+	}
+
+	.quick-action-bar.compact .btn-history {
+		padding: 6px 8px;
+	}
+
+	.btn-history:hover {
+		background: #f3f4f6;
+		border-color: #d1d5db;
+	}
+
+	.history-dropdown {
+		position: absolute;
+		top: 100%;
+		right: 0;
+		margin-top: 0.5rem;
+		width: 320px;
+		max-height: 400px;
+		background: #ffffff;
+		border: 1px solid #e5e7eb;
+		border-radius: 8px;
+		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+		z-index: 100;
+		overflow: hidden;
+	}
+
+	.history-header {
+		padding: 0.75rem 1rem;
+		font-weight: 500;
+		font-size: 0.875rem;
+		border-bottom: 1px solid #e5e7eb;
+		color: #374151;
+	}
+
+	.history-list {
+		max-height: 340px;
+		overflow-y: auto;
+	}
+
+	.history-item {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.625rem 1rem;
+		background: none;
+		border: none;
+		border-bottom: 1px solid #e5e7eb;
+		cursor: pointer;
+		text-align: left;
+		font-family: 'Figtree', sans-serif;
+	}
+
+	.history-item:last-child {
+		border-bottom: none;
+	}
+
+	.history-item:hover {
+		background: #f3f4f6;
+	}
+
+	.item-label {
+		flex: 1;
+		font-size: 0.8rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		color: #374151;
+	}
+
+	.item-time {
+		font-size: 0.7rem;
+		color: #9ca3af;
+		flex-shrink: 0;
+	}
+
+	.history-detail {
+		padding: 1rem;
+		max-height: 380px;
+		overflow-y: auto;
+	}
+
+	.back-btn {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.25rem 0.5rem;
+		background: none;
+		border: none;
+		font-size: 0.75rem;
+		cursor: pointer;
+		margin-bottom: 0.75rem;
+		color: #6b7280;
+		font-family: 'Figtree', sans-serif;
+	}
+
+	.back-btn:hover {
+		color: #374151;
+	}
+
+	.detail-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-weight: 500;
+		margin-bottom: 0.5rem;
+		color: #374151;
+	}
+
+	.detail-meta {
+		display: flex;
+		gap: 1rem;
+		font-size: 0.7rem;
+		color: #9ca3af;
+		margin-bottom: 0.75rem;
+	}
+
+	.detail-command {
+		padding: 0.5rem;
+		background: #f9fafb;
+		border: 1px solid #e5e7eb;
+		border-radius: 4px;
+		margin-bottom: 0.5rem;
+	}
+
+	.detail-command code {
+		font-size: 0.75rem;
+		font-family: 'SF Mono', monospace;
+		color: #6b7280;
+	}
+
+	.detail-output {
+		max-height: 200px;
+		overflow-y: auto;
+		background: #f9fafb;
+		border: 1px solid #e5e7eb;
+		border-radius: 4px;
+	}
+
+	.detail-output pre {
+		margin: 0;
+		padding: 0.5rem;
+		font-size: 0.7rem;
+		font-family: 'SF Mono', monospace;
+		white-space: pre-wrap;
+		word-break: break-word;
+		color: #374151;
+	}
+
+	.detail-actions {
+		margin-top: 0.75rem;
+		padding-top: 0.75rem;
+		border-top: 1px solid #e5e7eb;
+	}
+
+	.btn-rerun {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.375rem 0.75rem;
+		background: #3b82f6;
+		color: white;
+		border: none;
+		border-radius: 4px;
+		font-size: 0.75rem;
+		cursor: pointer;
+		font-family: 'Figtree', sans-serif;
+	}
+
+	.btn-rerun:hover {
+		background: #2563eb;
+	}
+
+	.loading,
+	.empty {
+		padding: 2rem 1rem;
+		text-align: center;
+		color: #9ca3af;
+		font-size: 0.8rem;
+	}
+
+	/* Icon colors in history */
+	.history-item :global(.icon:first-child) {
+		flex-shrink: 0;
 	}
 </style>
