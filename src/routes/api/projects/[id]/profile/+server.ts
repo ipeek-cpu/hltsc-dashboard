@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { getProjectById, getProjectProfileSettings, setProjectProfileSettings } from '$lib/dashboard-db';
 import type { CustomAction } from '$lib/dashboard-db';
 import { detectAllProfilesFromPath, getProfile, builtInProfiles } from '$lib/profiles';
+import { detectAllScripts, type DetectedScript } from '$lib/profiles/script-detector';
 import type { QuickAction } from '$lib/profiles';
 import type { RequestHandler } from './$types';
 
@@ -91,6 +92,12 @@ export const GET: RequestHandler = async ({ params }) => {
 			selectedProfileIds.flatMap((id) => getProfile(id).suggestedAgents)
 		)];
 
+		// Detect scripts from project files (package.json, Makefile, etc.)
+		const scriptDetection = detectAllScripts(project.path);
+
+		// Check if actions need configuration (no custom actions and using default profile actions)
+		const needsActionConfiguration = customActions.length === 0 && scriptDetection.scripts.length > 0;
+
 		return json({
 			// Selected profiles (what's currently active)
 			selectedProfiles,
@@ -110,6 +117,15 @@ export const GET: RequestHandler = async ({ params }) => {
 				isMonorepo: multiDetection.isMonorepo,
 				primaryProfile: multiDetection.primaryProfile
 			},
+
+			// Auto-detected scripts from project files
+			detectedScripts: {
+				scripts: scriptDetection.scripts,
+				sources: scriptDetection.sources
+			},
+
+			// Flag indicating if user should configure actions
+			needsActionConfiguration,
 
 			// All available profiles
 			availableProfiles: builtInProfiles.map((p) => ({

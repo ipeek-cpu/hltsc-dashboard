@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 	import CustomActionEditor from './CustomActionEditor.svelte';
+	import ScriptPicker from './ScriptPicker.svelte';
 
 	interface ProfileInfo {
 		id: string;
@@ -22,6 +23,15 @@
 		primaryProfile: string;
 	}
 
+	interface DetectedScript {
+		id: string;
+		label: string;
+		command: string;
+		source: string;
+		description?: string;
+		icon?: string;
+	}
+
 	interface CustomAction {
 		id: string;
 		label: string;
@@ -38,6 +48,8 @@
 		detection = null,
 		isAutoDetected = true,
 		customActions = [],
+		detectedScripts = [],
+		needsActionConfiguration = false,
 		onchange,
 		onCustomActionsChange
 	}: {
@@ -47,9 +59,16 @@
 		detection?: Detection | null;
 		isAutoDetected?: boolean;
 		customActions?: CustomAction[];
+		detectedScripts?: DetectedScript[];
+		needsActionConfiguration?: boolean;
 		onchange?: (profileIds: string[], useAutoDetect: boolean) => void;
 		onCustomActionsChange?: (actions: CustomAction[]) => void;
 	} = $props();
+
+	function handleScriptAdded(action: CustomAction) {
+		const newActions = [...customActions, action];
+		onCustomActionsChange?.(newActions);
+	}
 
 	let isOpen = $state(false);
 	let isLoading = $state(false);
@@ -233,6 +252,13 @@
 					</div>
 				</button>
 			{/each}
+
+			<ScriptPicker
+				{projectId}
+				{detectedScripts}
+				existingActions={customActions}
+				onActionAdded={handleScriptAdded}
+			/>
 
 			<CustomActionEditor
 				{projectId}

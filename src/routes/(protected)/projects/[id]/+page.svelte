@@ -120,6 +120,18 @@
 	}
 	let customActions = $state<CustomAction[]>([]);
 
+	// Detected scripts from package.json, Makefile, etc.
+	interface DetectedScript {
+		id: string;
+		label: string;
+		command: string;
+		source: string;
+		description?: string;
+		icon?: string;
+	}
+	let detectedScripts = $state<DetectedScript[]>([]);
+	let needsActionConfiguration = $state(false);
+
 	// Board filter state
 	let boardFilter: BoardFilter = $state({});
 
@@ -940,6 +952,8 @@
 				isAutoDetected = data.isAutoDetected ?? true;
 				quickActions = data.quickActions || [];
 				customActions = data.customActions || [];
+				detectedScripts = data.detectedScripts?.scripts || [];
+				needsActionConfiguration = data.needsActionConfiguration ?? false;
 			}
 		} catch (err) {
 			console.error('Failed to load profile:', err);
@@ -1193,6 +1207,8 @@
 							detection={profileDetection}
 							{isAutoDetected}
 							{customActions}
+							{detectedScripts}
+							{needsActionConfiguration}
 							onchange={handleProfileChange}
 							onCustomActionsChange={handleCustomActionsChange}
 						/>

@@ -35,3 +35,15 @@ export {
 	describeDetection,
 	describeMultiDetection
 } from './detection';
+
+// Script detection
+export {
+	detectAllScripts,
+	detectPackageJsonScripts,
+	detectMakefileTargets,
+	detectDockerComposeServices,
+	detectPackageManager,
+	scriptsToQuickActions,
+	type DetectedScript,
+	type ScriptDetectionResult
+} from './script-detector';
