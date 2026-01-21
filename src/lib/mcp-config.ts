@@ -9,7 +9,8 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import type { McpServerConfig, McpServersConfig, McpServerWithScope, McpConfigScope } from './types';
+import type { McpServerConfig, McpServersConfig, McpServerWithScope } from './types';
+import { memoryDbExists, getMemoryDbPath } from './memory/db';
 
 // Debug logging
 const LOG_FILE = path.join(os.homedir(), '.beads-dashboard', 'mcp-config.log');
@@ -178,7 +179,7 @@ export function getMergedMcpServers(projectPath?: string): McpServerWithScope[] 
 		const projectServers = readProjectMcpConfig(projectPath);
 		for (const [name, config] of Object.entries(projectServers)) {
 			// Remove any global server with the same name
-			const existingIndex = result.findIndex(s => s.name === name);
+			const existingIndex = result.findIndex((s) => s.name === name);
 			if (existingIndex >= 0) {
 				result.splice(existingIndex, 1);
 			}
@@ -234,9 +235,11 @@ export function validateMcpConfig(config: McpServerConfig): { valid: boolean; er
 /**
  * Convert a registry package to local MCP server config
  */
-export function convertRegistryPackageToConfig(
-	pkg: { registryType: string; identifier: string; packageArguments?: string[] }
-): McpServerConfig {
+export function convertRegistryPackageToConfig(pkg: {
+	registryType: string;
+	identifier: string;
+	packageArguments?: string[];
+}): McpServerConfig {
 	if (pkg.registryType === 'npm') {
 		return {
 			type: 'stdio',
@@ -264,9 +267,7 @@ export function convertRegistryPackageToConfig(
  */
 export function maskEnvValue(key: string, value: string): string {
 	const sensitivePatterns = ['key', 'secret', 'token', 'password', 'credential', 'auth'];
-	const isLikelySensitive = sensitivePatterns.some(pattern =>
-		key.toLowerCase().includes(pattern)
-	);
+	const isLikelySensitive = sensitivePatterns.some((pattern) => key.toLowerCase().includes(pattern));
 
 	if (isLikelySensitive && value.length > 4) {
 		return value.substring(0, 2) + '••••••' + value.substring(value.length - 2);
@@ -279,4 +280,102 @@ export function maskEnvValue(key: string, value: string): string {
  */
 export function projectHasMcpConfig(projectPath: string): boolean {
 	return fs.existsSync(getProjectMcpPath(projectPath));
+}
+
+// ============================================================================
+// Memory MCP Server Registration
+// ============================================================================
+
+/**
+ * Get the path to the beads-memory MCP server script
+ * Resolves relative to the dashboard's lib directory
+ */
+function getMemoryMcpServerPath(): string {
+	// In development/Node context, resolve from this file's directory
+	// The MCP server is at src/lib/memory/mcp-server.ts
+	// In production, it would be at the built location
+	const devPath = path.join(
+		path.dirname(import.meta.url.replace('file://', '')),
+		'memory',
+		'mcp-server.ts'
+	);
+
+	// For production, check for compiled JS version
+	const prodPath = path.join(os.homedir(), '.beads-dashboard', 'lib', 'memory', 'mcp-server.js');
+
+	// Prefer production path if it exists, otherwise use dev path
+	if (fs.existsSync(prodPath)) {
+		return prodPath;
+	}
+
+	return devPath;
+}
+
+/**
+ * Ensure the beads-memory MCP server is registered for a project
+ * Only registers if memory.db exists
+ *
+ * @param projectPath - Path to the project root
+ * @param projectId - Project identifier for the memory database
+ * @returns true if server was registered or already exists, false if no memory.db found
+ */
+export function ensureMemoryMcpServer(projectPath: string, projectId: string): boolean {
+	// Check if memory.db exists
+	if (!memoryDbExists(projectPath)) {
+		logDebug(`Memory DB does not exist for project at ${projectPath}, skipping MCP registration`);
+		return false;
+	}
+
+	// Read existing MCP config
+	const config = readProjectMcpConfig(projectPath);
+
+	// Check if already registered
+	if ('beads-memory' in config) {
+		logDebug(`beads-memory MCP server already registered for ${projectPath}`);
+		return true;
+	}
+
+	// Get the path to the memory database
+	const memoryDbPath = getMemoryDbPath(projectPath);
+
+	// Get the MCP server script path
+	const mcpServerPath = getMemoryMcpServerPath();
+
+	logDebug(`Registering beads-memory MCP server for ${projectPath}`);
+	logDebug(`  Memory DB: ${memoryDbPath}`);
+	logDebug(`  MCP Server: ${mcpServerPath}`);
+
+	// Register the server
+	// Use npx tsx to run TypeScript directly, which is more portable
+	writeProjectMcpServer(projectPath, 'beads-memory', {
+		type: 'stdio',
+		command: 'npx',
+		args: ['tsx', mcpServerPath],
+		env: {
+			MEMORY_DB_PATH: memoryDbPath,
+			PROJECT_ID: projectId
+		}
+	});
+
+	return true;
+}
+
+/**
+ * Remove the beads-memory MCP server registration from a project
+ *
+ * @param projectPath - Path to the project root
+ * @returns true if server was removed, false if it wasn't registered
+ */
+export function removeMemoryMcpServer(projectPath: string): boolean {
+	const config = readProjectMcpConfig(projectPath);
+
+	if (!('beads-memory' in config)) {
+		logDebug(`beads-memory MCP server not registered for ${projectPath}`);
+		return false;
+	}
+
+	logDebug(`Removing beads-memory MCP server registration from ${projectPath}`);
+
+	// Use deleteProjectMcpServer for consistency
+	return deleteProjectMcpServer(projectPath, 'beads-memory');
 }
