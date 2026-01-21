@@ -1196,6 +1196,7 @@
 					{#if quickActions.length > 0}
 						<QuickActionBar
 							projectId={$page.params.id || ''}
+							projectPath={project?.path}
 							actions={quickActions}
 							compact={true}
 						/>
