@@ -10,6 +10,7 @@ import {
 	refreshProjectDb
 } from '$lib/project-db';
 import { validateTransition, type BeadStatus, type TransitionData } from '$lib/bead-lifecycle';
+import { closeBead } from '$lib/beads-cli';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ params }) => {
@@ -108,6 +109,27 @@ export const PATCH: RequestHandler = async ({ params, request }) => {
 			return json({ error: 'No fields to update' }, { status: 400 });
 		}
 
+		// Special handling for closing beads - use bd close CLI
+		if (status === 'closed' && issue.status !== 'closed') {
+			const closeResult = closeBead(project.path, params.issueId);
+
+			if (!closeResult.success) {
+				return json(
+					{ error: closeResult.error || 'Failed to close bead via bd CLI' },
+					{ status: 500 }
+				);
+			}
+
+			// Notify that we changed the DB and refresh connection
+			notifyDbChange(project.path);
+			refreshProjectDb(project.path);
+
+			// Return updated issue
+			const updatedIssue = getIssueWithDetails(project.path, params.issueId);
+			return json(updatedIssue);
+		}
+
+		// For other updates, use direct DB update
 		const success = updateIssue(project.path, params.issueId, {
 			title,
 			description,
