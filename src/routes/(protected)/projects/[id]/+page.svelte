@@ -37,6 +37,7 @@
 	import ProfileSelector from '../../../../components/ProfileSelector.svelte';
 	import QuickActionBar from '../../../../components/QuickActionBar.svelte';
 	import type { QuickAction } from '$lib/profiles';
+	import IntentViewer from '../../../../components/IntentViewer.svelte';
 
 	let project: ProjectInfo | null = $state(null);
 	let issues: Issue[] = $state([]);
@@ -63,6 +64,9 @@
 	// Known issues state
 	let knownIssues = $state<KnownIssue[]>([]);
 	let knownIssuesFetched = $state(false);
+
+	// Intent viewer state
+	let showIntentViewer = $state(false);
 
 	// Navigation history for back button
 	let issueHistory = $state<string[]>([]);
@@ -1334,6 +1338,21 @@
 			{:else if activeTab === 'settings'}
 				<div class="settings-container">
 					<div class="settings-section">
+						<h2>Project Intent</h2>
+						<p class="settings-description">
+							Define your project's goals, technical decisions, and design rationale in a
+							PROJECT_INTENT.md file. Use anchors to link specific sections to beads for
+							context-aware AI assistance.
+						</p>
+						<div class="intent-actions">
+							<button class="intent-btn" onclick={() => showIntentViewer = true}>
+								<Icon name="file-text" size={16} />
+								View & Edit Intent
+							</button>
+						</div>
+					</div>
+
+					<div class="settings-section">
 						<h2>Known Issues</h2>
 						<p class="settings-description">
 							Track known issues, CI failures, blockers, and notes. Active issues are
@@ -1504,6 +1523,13 @@
 		{selectedIssues}
 		onstatuschange={handleBulkStatusChange}
 		onclear={clearSelection}
+	/>
+
+	<!-- Intent Viewer sheet -->
+	<IntentViewer
+		projectId={$page.params.id || ''}
+		open={showIntentViewer}
+		onclose={() => showIntentViewer = false}
 	/>
 </div>
 
@@ -2158,6 +2184,38 @@
 		font-size: 14px;
 		color: #6b7280;
 		line-height: 1.6;
+	}
+
+	.intent-actions {
+		display: flex;
+		gap: 12px;
+		margin-bottom: 24px;
+	}
+
+	.intent-btn {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 16px;
+		background: #ffffff;
+		border: 1px solid #e5e7eb;
+		border-radius: 8px;
+		font-size: 14px;
+		font-weight: 500;
+		color: #374151;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		font-family: 'Figtree', sans-serif;
+	}
+
+	.intent-btn:hover {
+		background: #f9fafb;
+		border-color: #d1d5db;
+		color: #1f2937;
+	}
+
+	.intent-btn:active {
+		background: #f3f4f6;
 	}
 
 	.kanban-board {
