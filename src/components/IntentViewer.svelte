@@ -21,7 +21,8 @@
   // State
   let intent = $state<IntentGetResponse['intent'] | null>(null);
   let cacheInfo = $state<IntentGetResponse['cache'] | null>(null);
-  let loading = $state(true);
+  let loading = $state(false);
+  let loaded = $state(false);  // Track if we've attempted to load
   let error = $state<string | null>(null);
   let editMode = $state(false);
   let editContent = $state('');
@@ -63,6 +64,7 @@
       error = e instanceof Error ? e.message : 'Unknown error';
     } finally {
       loading = false;
+      loaded = true;
     }
   }
 
@@ -123,10 +125,81 @@
   // Format intent back to markdown
   function formatIntentToMarkdown(intentData: IntentGetResponse['intent'] | null): string {
     if (!intentData || !intentData.sections.length) {
-      return '# Project Intent\n\nDescribe your project goals and technical decisions here.\n';
+      return getIntentTemplate();
     }
     // Build markdown from sections
     return intentData.sections.map((s) => formatSection(s, 1)).join('\n\n');
+  }
+
+  // Comprehensive template for new intent documents
+  function getIntentTemplate(): string {
+    const now = new Date().toISOString().split('T')[0] + 'T00:00:00Z';
+    return `---
+version: 1
+created_at: ${now}
+updated_at: ${now}
+---
+
+# Project Intent: [Project Name]
+
+## Overview {#anchor:overview}
+
+Brief description of what this project does and its primary purpose.
+
+## Business Model {#anchor:business-model}
+
+### Target Users {#anchor:business-model.users}
+
+- Who is this for?
+- What problems does it solve for them?
+
+### Value Proposition {#anchor:business-model.value}
+
+- What makes this valuable?
+- How does it differentiate from alternatives?
+
+## Architecture Constraints {#anchor:constraints}
+
+### Tech Stack {#anchor:constraints.tech-stack}
+
+- List key technologies and frameworks
+- Explain why these choices were made
+
+### Design Patterns {#anchor:constraints.patterns}
+
+- Document architectural decisions
+- Explain patterns that must be followed
+
+## Non-Negotiables {#anchor:non-negotiables}
+
+- Critical requirements that cannot be compromised
+- Security or compliance requirements
+- Performance thresholds
+
+## Anti-Goals {#anchor:anti-goals}
+
+- What this project is NOT trying to do
+- Features explicitly out of scope
+- Complexity to avoid
+
+## Plan Lifecycle {#anchor:lifecycle}
+
+### Generate {#anchor:lifecycle.generate}
+
+How implementation plans should be created.
+
+### Execute {#anchor:lifecycle.execute}
+
+How work should be implemented and validated.
+
+### Review {#anchor:lifecycle.review}
+
+How implementations should be reviewed.
+
+### Iterate {#anchor:lifecycle.iterate}
+
+How feedback should inform future work.
+`;
   }
 
   function formatSection(section: IntentSection, level: number): string {
@@ -175,13 +248,15 @@
       // Wait for animation to complete before hiding
       setTimeout(() => {
         visible = false;
+        // Reset loaded state so we reload next time
+        loaded = false;
       }, 300);
     }
   });
 
-  // Load intent when opened
+  // Load intent when opened (only if not already loaded)
   $effect(() => {
-    if (open && !intent && !loading && !error) {
+    if (open && !loaded && !loading) {
       loadIntent();
     }
   });
@@ -195,7 +270,7 @@
 
   // Load intent on mount if already open
   onMount(() => {
-    if (open) loadIntent();
+    if (open && !loaded) loadIntent();
   });
 
   // Resize handlers
